@@ -29,12 +29,14 @@ async function getVisiblePosts() {
   const { data, error } = await supabase
     .from('posts')
     .select(`
-      id,user_id,content,image_url,privacy,created_at,
-      profiles!posts_user_id_fkey(id,full_name,avatar_url),
-      post_likes(id,user_id,reaction_type,created_at),
-      comments(id,post_id,user_id,parent_id,content,created_at,updated_at,
-        profiles!comments_user_id_fkey(id,full_name,avatar_url),
-        comment_likes(id,user_id))
+      id, user_id, content, image_url, privacy, created_at,
+      profiles (id, full_name, avatar_url),
+      post_likes (id, user_id, reaction_type, created_at),
+      comments (
+        id, post_id, user_id, parent_id, content, created_at, updated_at,
+        profiles (id, full_name, avatar_url),
+        comment_likes (id, user_id)
+      )
     `)
     .order('created_at', { ascending: false })
     .limit(60);
@@ -79,7 +81,7 @@ function postHtml(post) {
       <div class="comment-tree">${renderComments(post)}</div>
       ${renderReplyState(post.id)}
       <form class="comment-form" data-post-id="${post.id}">
-        <input class="input" name="content" maxlength="1000" placeholder="${replyTarget?.postId === post.id ? `Trả lời ${replyTarget.name}...` : 'Viết bình luận...'}">
+        <input class="input" name="content" maxlength="1000" autocomplete="off" placeholder="${replyTarget?.postId === post.id ? `Trả lời ${replyTarget.name}...` : 'Viết bình luận...'}">
         <button class="btn primary" type="submit">Gửi</button>
       </form>
     </div>
@@ -218,9 +220,17 @@ async function showPostLikes(postId) {
 async function submitComment(event) {
   event.preventDefault();
   const user = getCurrentUser();
-  const postId = event.currentTarget.dataset.postId;
-  const content = event.currentTarget.content.value.trim();
-  if (!user || !content) return;
+  const form = event.target; // Đã sửa từ event.currentTarget thành event.target
+  const postId = form.dataset.postId;
+  const contentInput = form.querySelector('input[name="content"]');
+  const content = contentInput ? contentInput.value.trim() : '';
+
+  if (!user) {
+    toast('Vui lòng đăng nhập để bình luận.', 'error');
+    return;
+  }
+
+  if (!content) return;
 
   const { error } = await supabase.from('comments').insert({
     post_id: postId,
@@ -228,10 +238,12 @@ async function submitComment(event) {
     parent_id: replyTarget?.postId === postId ? replyTarget.commentId : null,
     content
   });
-  if (error) toast(error.message, 'error');
-  else {
+
+  if (error) {
+    toast(error.message, 'error');
+  } else {
     replyTarget = null;
-    event.currentTarget.reset();
+    form.reset();
     await renderFeed();
   }
 }
@@ -318,7 +330,9 @@ export function initFeed() {
   $('post-image').addEventListener('change', previewPostImage);
   $('feed-list').addEventListener('click', handleFeedClick);
   $('feed-list').addEventListener('submit', e => {
-    if (e.target.matches('.comment-form')) submitComment(e);
+    if (e.target.classList.contains('comment-form')) {
+      submitComment(e);
+    }
   });
   window.addEventListener('auth-ready', renderFeed);
   window.addEventListener('profile-updated', renderFeed);

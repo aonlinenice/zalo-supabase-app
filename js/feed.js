@@ -220,10 +220,15 @@ async function showPostLikes(postId) {
 async function submitComment(event) {
   event.preventDefault();
   const user = getCurrentUser();
-  const form = event.target; // Đã sửa từ event.currentTarget thành event.target
+  
+  // Tìm đúng form submit (kể cả khi bấm nút Gửi hoặc gõ Enter)
+  const form = event.target.closest('form') || event.currentTarget;
+  if (!form) return;
+
   const postId = form.dataset.postId;
-  const contentInput = form.querySelector('input[name="content"]');
-  const content = contentInput ? contentInput.value.trim() : '';
+  // Lấy ô input an toàn bằng querySelector
+  const inputEl = form.querySelector('input[name="content"]') || form.querySelector('input');
+  const content = inputEl ? inputEl.value.trim() : '';
 
   if (!user) {
     toast('Vui lòng đăng nhập để bình luận.', 'error');
@@ -330,7 +335,7 @@ export function initFeed() {
   $('post-image').addEventListener('change', previewPostImage);
   $('feed-list').addEventListener('click', handleFeedClick);
   $('feed-list').addEventListener('submit', e => {
-    if (e.target.classList.contains('comment-form')) {
+    if (e.target.closest('.comment-form')) {
       submitComment(e);
     }
   });

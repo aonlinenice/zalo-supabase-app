@@ -37,13 +37,13 @@ async function loadConversations() {
     .from('conversation_members')
     .select(`
       conversation_id, role, status, joined_at,
-      conversations!conversation_members_conversation_id_fkey(
-        id,type,name,avatar_url,created_by,created_at,
-        conversation_members(
-          user_id,role,status,
-          profiles!conversation_members_user_id_fkey(id,full_name,avatar_url)
+      conversations (
+        id, type, name, avatar_url, created_by, created_at,
+        conversation_members (
+          user_id, role, status,
+          profiles (id, full_name, avatar_url)
         ),
-        messages(id,content,media_url,is_recalled,created_at,sender_id)
+        messages (id, content, media_url, is_recalled, created_at, sender_id)
       )
     `)
     .eq('user_id', user.id)
@@ -56,7 +56,7 @@ async function loadConversations() {
 
   conversations = (data || []).map(x => x.conversations).filter(Boolean).map(c => {
     c.conversation_members = (c.conversation_members || []).filter(m => m.status === 'active');
-    c.messages = (c.messages || []).sort((a,b) => new Date(a.created_at)-new Date(b.created_at));
+    c.messages = (c.messages || []).sort((a,b) => new Date(a.created_at) - new Date(b.created_at));
     return c;
   }).sort((a,b) => {
     const at = a.messages.at(-1)?.created_at || a.created_at;
@@ -114,21 +114,25 @@ async function openConversation(id) {
 
 async function loadMembers() {
   if (!activeConversation) return;
-  const { data, error } = await supabase.from('conversation_members')
-    .select('id,user_id,role,status,joined_at,profiles!conversation_members_user_id_fkey(id,full_name,avatar_url,email)')
+  // SỬA LỖI CÚ PHÁP TẠI ĐÂY
+  const { data, error } = await supabase
+    .from('conversation_members')
+    .select('id, user_id, role, status, joined_at, profiles (id, full_name, avatar_url, email)')
     .eq('conversation_id', activeConversation.id)
     .order('joined_at', { ascending: true });
+
   if (error) toast(error.message, 'error');
   activeMembers = data || [];
 }
 
 async function loadMessages() {
   if (!activeConversation) return;
+  // SỬA CÚ PHÁP JOIN ĐỂ TRÁNH LỖI SCHEMA CACHE
   const { data, error } = await supabase.from('messages')
     .select(`
-      id,conversation_id,sender_id,content,media_url,reply_to_id,is_recalled,created_at,
-      profiles!messages_sender_id_fkey(id,full_name,avatar_url),
-      reply_to:messages!messages_reply_to_id_fkey(id,sender_id,content,is_recalled,created_at)
+      id, conversation_id, sender_id, content, media_url, reply_to_id, is_recalled, created_at,
+      profiles (id, full_name, avatar_url),
+      reply_to:messages!reply_to_id (id, sender_id, content, is_recalled, created_at)
     `)
     .eq('conversation_id', activeConversation.id)
     .order('created_at', { ascending: true })
@@ -147,7 +151,7 @@ async function loadReactions() {
   if (!messages.length) return;
   const ids = messages.map(m => m.id);
   const { data, error } = await supabase.from('message_reactions')
-    .select('id,message_id,user_id,emoji')
+    .select('id, message_id, user_id, emoji')
     .in('message_id', ids);
   if (error) return;
   const map = new Map();
@@ -294,7 +298,7 @@ async function searchUsers(term, target='direct') {
   const user = getCurrentUser();
   if (!user) return;
 
-  let query = supabase.from('profiles').select('id,full_name,email,avatar_url').neq('id', user.id).order('full_name').limit(20);
+  let query = supabase.from('profiles').select('id, full_name, email, avatar_url').neq('id', user.id).order('full_name').limit(20);
   if (term.trim()) {
     const safe = term.trim().replace(/[%_]/g, '');
     query = query.or(`full_name.ilike.%${safe}%,email.ilike.%${safe}%`);
@@ -332,7 +336,6 @@ async function startDirect(userId) {
 function selectGroupUser(userId) {
   const person = [...document.querySelectorAll('#group-results .person')].find(x => x.querySelector('[data-user-id]')?.dataset.userId === userId);
   if (!person) return;
-  const button = person.querySelector('[data-action="select-group"]');
   const name = person.querySelector('.person-info strong')?.textContent || 'User';
   const avatar = person.querySelector('.avatar')?.src || '';
 
@@ -560,7 +563,7 @@ export function initChat() {
     if (chatChannel) supabase.removeChannel(chatChannel);
   });
 
-  // Global conversation-list realtime updates.
+  // Realtime updates
   supabase.channel('chat-list-live')
     .on('postgres_changes', { event:'*', schema:'public', table:'messages' }, loadConversations)
     .on('postgres_changes', { event:'*', schema:'public', table:'conversation_members' }, loadConversations)

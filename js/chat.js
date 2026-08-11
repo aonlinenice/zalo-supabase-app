@@ -10,7 +10,13 @@ let messages = [];
 let replyMessage = null;
 let chatChannel = null;
 let selectedGroupUsers = [];
+// Khởi tạo âm thanh thông báo tin nhắn
+const notifySound = new Audio('https://etquvhtzwqzjskmkxlog.supabase.co/storage/v1/object/public/assets/audio/notification.mp3');
 
+function playNotificationSound() {
+  notifySound.currentTime = 0;
+  notifySound.play().catch(err => console.log('Chờ tương tác của người dùng để phát âm thanh:', err));
+}
 function toast(msg, type='') { window.appToast?.(msg, type); }
 function fallbackAvatar(name='User') {
   return `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=e4eef8&color=24527a`;
@@ -582,21 +588,25 @@ export function initChat() {
     await loadConversations();
     showView('feed-view');
   });
+  
   window.addEventListener('auth-signed-out', () => {
     conversations = [];
     activeConversation = null;
     if (chatChannel) supabase.removeChannel(chatChannel);
   });
 
+  // LẮNG NGHE REALTIME TIN NHẮN & PHÁT ÂM THANH
   supabase.channel('chat-list-live')
-    .on('postgres_changes', { event:'INSERT', schema:'public', table:'messages' }, payload => {
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, payload => {
       const me = getCurrentUser();
-      if (me && payload.new.sender_id !== me.id) {
+      // Kiểm tra nếu là tin nhắn từ người khác gửi tới
+      if (me && payload.new && payload.new.sender_id !== me.id) {
+        playNotificationSound(); // Phát âm thanh thông báo tin nhắn
         toast('📩 Bạn có tin nhắn mới!', 'info');
       }
       loadConversations();
     })
-    .on('postgres_changes', { event:'*', schema:'public', table:'conversation_members' }, loadConversations)
-    .on('postgres_changes', { event:'*', schema:'public', table:'conversations' }, loadConversations)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'conversation_members' }, loadConversations)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'conversations' }, loadConversations)
     .subscribe();
 }

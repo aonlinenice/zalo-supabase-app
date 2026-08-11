@@ -1,7 +1,6 @@
-// js/feed.js
 import { supabase, APP_CONFIG } from './supabase-client.js';
 import { getCurrentUser } from './auth.js';
-import { avatarFor, uploadImage, escapeHtml } from './profile.js';
+import { avatarFor, uploadImage, escapeHtml, filterProfanity } from './profile.js';
 
 const $ = id => document.getElementById(id);
 let posts = [];
@@ -140,17 +139,47 @@ async function renderFeed() {
 
 function findPost(postId) { return posts.find(p => p.id === postId); }
 
+// 1. GIỚI HẠN SỐ LƯỢNG STATUS (Tối đa 5 bài/ngày)
+async function checkPostLimit(userId) {
+  const startOfDay = new Date();
+  startOfDay.setHours(0,0,0,0);
+
+  const { count, error } = await supabase
+    .from('posts')
+    .select('id', { count: 'exact', head: true })
+    .eq('user_id', userId)
+    .gte('created_at', startOfDay.toISOString());
+
+  if (error) return true;
+  return (count || 0) < 5;
+}
+
 async function submitPost(event) {
   event.preventDefault();
   const user = getCurrentUser();
   if (!user) return;
 
-  const content = $('post-content').value.trim();
+  const rawContent = $('post-content').value.trim();
+  // 5. LỌC TỪ TỤC TĨU
+  const content = filterProfanity(rawContent);
   const url = $('post-image-url').value.trim();
   const file = $('post-image').files[0];
 
+  // 3. GIỚI HẠN ĐỘ DÀI KÝ TỰ STATUS (Dưới 280 ký tự)
+  if (content.length > 280) {
+    toast('Độ dài status không được quá 280 ký tự.', 'error');
+    return;
+  }
+
   if (!content && !url && !file) {
     toast('Bài viết cần nội dung hoặc ảnh.', 'error');
+    return;
+  }
+
+  // KIỂM TRA GIỚI HẠN BÀI ĐĂNG
+  const canPost = await checkPostLimit(user.id);
+  if (!canPost) {
+    toast('Bạn đã đạt giới hạn 5 bài đăng trong ngày hôm nay.', 'error');
     return;
   }
 
@@ -220,22 +249,21 @@ async function showPostLikes(postId) {
 async function submitComment(event) {
   event.preventDefault();
   const user = getCurrentUser();
-  
-  // Tìm đúng form submit (kể cả khi bấm nút Gửi hoặc gõ Enter)
   const form = event.target.closest('form') || event.currentTarget;
   if (!form) return;
 
   const postId = form.dataset.postId;
-  // Lấy ô input an toàn bằng querySelector
   const inputEl = form.querySelector('input[name="content"]') || form.querySelector('input');
-  const content = inputEl ? inputEl.value.trim() : '';
+  const rawContent = inputEl ? inputEl.value.trim() : '';
 
   if (!user) {
     toast('Vui lòng đăng nhập để bình luận.', 'error');
     return;
   }
 
-  if (!content) return;
+  if (!rawContent) return;
+  // 5. LỌC TỪ TỤC TĨU TRONG BÌNH LUẬN
+  const content = filterProfanity(rawContent);
 
   const { error } = await supabase.from('comments').insert({
     post_id: postId,
@@ -342,9 +370,16 @@ export function initFeed() {
   window.addEventListener('auth-ready', renderFeed);
   window.addEventListener('profile-updated', renderFeed);
 
+  // 6. THÔNG BÁO KHI CÓ BÌNH LUẬN MỚI
   supabase.channel('feed-live')
     .on('postgres_changes', { event: '*', schema: 'public', table: 'posts' }, renderFeed)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'post_likes' }, renderFeed)
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'comments' }, renderFeed)
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'comments' }, payload => {
+      const me = getCurrentUser();
+      if (me && payload.new.user_id !== me.id) {
+        toast('💬 Có bình luận mới trên bảng tin!', 'info');
+      }
+      renderFeed();
+    })
     .subscribe();
 }

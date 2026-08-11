@@ -1,8 +1,20 @@
-// js/profile.js
 import { supabase, APP_CONFIG } from './supabase-client.js';
 import { getCurrentUser } from './auth.js';
 
 const $ = id => document.getElementById(id);
+
+// Danh sách từ cấm lọc tục tĩu
+const BAD_WORDS = ['dm', 'dmm', 'vl', 'cl', 'vãi', 'đột', 'đm', 'đmm', 'bậy', 'tục'];
+
+function filterProfanity(text = '') {
+  if (!text) return text;
+  let filtered = text;
+  BAD_WORDS.forEach(word => {
+    const regex = new RegExp(`\\b${word}\\b`, 'gi');
+    filtered = filtered.replace(regex, '***');
+  });
+  return filtered;
+}
 
 function toast(msg, type='') { window.appToast?.(msg, type); }
 
@@ -14,10 +26,12 @@ function avatarFor(profile) {
   return profile?.avatar_url || fallbackAvatar(profile?.full_name || 'User');
 }
 
+// 2. GIỚI HẠN DUNG LƯỢNG ÁNH 4MB
 async function uploadImage(file, bucket, folder) {
   if (!file) return null;
-  if (file.size > 6 * 1024 * 1024) throw new Error('Ảnh vượt quá 6MB.');
-  if (!file.type.startsWith('image/')) throw new Error('Chỉ chấp nhận file ảnh.');
+  const MAX_SIZE = 4 * 1024 * 1024; // 4MB
+  if (file.size > MAX_SIZE) throw new Error('Dung lượng ảnh tối đa cho phép là 4MB.');
+  if (!file.type.startsWith('image/')) throw new Error('Chỉ chấp nhận file định dạng ảnh.');
 
   const ext = (file.name.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '');
   const path = `${folder}/${crypto.randomUUID()}.${ext}`;
@@ -73,8 +87,8 @@ async function saveProfile(event) {
   const user = getCurrentUser();
   if (!user) return;
 
-  const name = $('profile-name').value.trim();
-  const bio = $('profile-bio').value.trim();
+  const name = filterProfanity($('profile-name').value.trim());
+  const bio = filterProfanity($('profile-bio').value.trim());
   const file = $('profile-avatar-file').files[0];
 
   if (!name) {
@@ -110,7 +124,7 @@ function escapeHtml(value='') {
 }
 function escapeAttr(value='') { return escapeHtml(value); }
 
-export { avatarFor, fallbackAvatar, uploadImage, escapeHtml };
+export { avatarFor, fallbackAvatar, uploadImage, escapeHtml, filterProfanity };
 
 export function initProfile() {
   $('profile-btn').addEventListener('click', openProfileModal);

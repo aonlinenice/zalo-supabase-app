@@ -567,10 +567,12 @@ export function initChat() {
   });
 
   // 6. THÔNG BÁO KHI CÓ TIN NHẮN MỚI REALTIME
+  // 6. THÔNG BÁO KHI CÓ TIN NHẮN MỚI REALTIME
   supabase.channel('chat-list-live')
     .on('postgres_changes', { event:'INSERT', schema:'public', table:'messages' }, payload => {
       const me = getCurrentUser();
       if (me && payload.new.sender_id !== me.id) {
+        playNotificationSound(); // <-- THÊM ÂM THANH VÀO ĐÂY
         toast('📩 Bạn có tin nhắn mới!', 'info');
       }
       loadConversations();

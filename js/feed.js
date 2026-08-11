@@ -417,6 +417,8 @@ function setupInfiniteScroll() {
   });
 }
 
+// js/feed.js (Đoạn cập nhật ở cuối file)
+
 export function initFeed() {
   if ($('post-form')) $('post-form').addEventListener('submit', submitPost);
   if ($('post-image')) $('post-image').addEventListener('change', previewPostImage);
@@ -443,10 +445,12 @@ export function initFeed() {
   window.addEventListener('auth-ready', () => loadPosts(true));
   window.addEventListener('profile-updated', () => loadPosts(true));
 
+  // LẮNG NGHE REALTIME BẢNG TIN & THÔNG BÁO
   supabase.channel('feed-live')
     .on('postgres_changes', { event: '*', schema: 'public', table: 'posts' }, () => loadPosts(true))
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'post_likes' }, payload => {
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'post_likes' }, payload => {
       const me = getCurrentUser();
+      // Chỉ thông báo khi người khác thả tim (không phải chính mình)
       if (me && payload.new && payload.new.user_id !== me.id) {
         playNotificationSound();
         toast('👍 Có người thích bài viết!', 'info');
@@ -455,7 +459,8 @@ export function initFeed() {
     })
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'comments' }, payload => {
       const me = getCurrentUser();
-      if (me && payload.new_user_id !== me.id) {
+      // ĐÃ SỬA: payload.new.user_id thay vì payload.new_user_id
+      if (me && payload.new && payload.new.user_id !== me.id) {
         playNotificationSound();
         toast('💬 Có bình luận mới!', 'info');
       }

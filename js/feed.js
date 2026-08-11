@@ -6,6 +6,100 @@ const $ = id => document.getElementById(id);
 let posts = [];
 let replyTarget = null;
 
+let page = 0;
+const PAGE_SIZE = 10;
+let isLoading = false;
+let hasMore = true; // Biến kiểm tra còn bài viết để tải không
+
+// ==========================================
+// 1. CẤU HÌNH VÀ HÀM PHÁT ÂM THANH THÔNG BÁO
+// ==========================================
+const notifySound = new Audio('/assets/audio/notification.mp3');
+
+function playNotificationSound() {
+  notifySound.currentTime = 0; // Đưa file âm thanh về giây 0 để có thể phát lại ngay lập tức
+  notifySound.play().catch(err => {
+    // Trình duyệt sẽ chặn phát nhạc tự động nếu người dùng chưa tương tác (click) trên trang lần nào
+    console.log('Chờ người dùng tương tác với trang để phát âm thanh:', err);
+  });
+}
+// Lắng nghe sự kiện Realtime để phát tiếng báo
+supabase.channel('feed-live')
+  .on('postgres_changes', { event: '*', schema: 'public', table: 'post_likes' }, payload => {
+    const me = getCurrentUser();
+    // Nếu có người khác bấm like bài viết -> Phát âm thanh
+    if (me && payload.new && payload.new.user_id !== me.id) {
+      playNotificationSound(); // <-- GỌI HÀM Ở ĐÂY
+      toast('👍 Có người thích bài viết!', 'info');
+    }
+    loadPosts(true);
+  })
+  .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'comments' }, payload => {
+    const me = getCurrentUser();
+    // Nếu có người khác gửi bình luận -> Phát âm thanh
+    if (me && payload.new.user_id !== me.id) {
+      playNotificationSound(); // <-- GỌI HÀM Ở ĐÂY
+      toast('💬 Có bình luận mới!', 'info');
+    }
+    loadPosts(true);
+  })
+  .subscribe();
+
+// 1. Hàm lấy 10 bài viết theo trang
+async function loadPosts() {
+  if (isLoading || !hasMore) return;
+  isLoading = true;
+  showLoadingSpinner(true); // Hiển thị icon loading ở cuối trang
+
+  const from = page * PAGE_SIZE;
+  const to = from + PAGE_SIZE - 1;
+
+  try {
+    const { data: posts, error } = await supabase
+      .from('posts')
+      .select(`
+        *,
+        profiles:user_id (full_name, avatar_url),
+        comments (count),
+        post_likes (count)
+      `)
+      .order('created_at', { ascending: false })
+      .range(from, to);
+
+    if (error) throw error;
+
+    if (posts.length < PAGE_SIZE) {
+      hasMore = false; // Đã tải hết bài viết trong DB
+    }
+
+    if (posts.length > 0) {
+      renderPostsToUI(posts); // Hàm vẽ giao diện bài viết của bạn
+      page++; // Tăng số trang cho lần cuộn tiếp theo
+    }
+  } catch (err) {
+    console.error('Lỗi khi tải bài viết:', err.message);
+  } finally {
+    isLoading = false;
+    showLoadingSpinner(false);
+  }
+}
+
+// 2. Lắng nghe sự kiện Cuộn trang (Scroll Event)
+window.addEventListener('scroll', () => {
+  // Khi cuộn gần đến đáy trang (cách đáy 200px) thì tự động gọi loadPosts()
+  const { scrollTop, scrollHeight, clientHeight } = document.documentElement;
+  
+  if (scrollTop + clientHeight >= scrollHeight - 200) {
+    loadPosts();
+  }
+});
+
+// 3. Tải đợt 10 bài viết đầu tiên khi mới vào trang
+document.addEventListener('DOMContentLoaded', () => {
+  loadPosts();
+});
+
+
 function toast(msg, type='') { window.appToast?.(msg, type); }
 
 function timeAgo(iso) {

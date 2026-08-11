@@ -6,10 +6,11 @@ const $ = id => document.getElementById(id);
 let posts = [];
 let replyTarget = null;
 
+// Quản lý phân trang Infinite Scroll (10 bài / lần)
 let page = 0;
 const PAGE_SIZE = 10;
 let isLoading = false;
-let hasMore = true; // Biến kiểm tra còn bài viết để tải không
+let hasMore = true;
 
 // ==========================================
 // 1. CẤU HÌNH VÀ HÀM PHÁT ÂM THANH THÔNG BÁO
@@ -17,88 +18,11 @@ let hasMore = true; // Biến kiểm tra còn bài viết để tải không
 const notifySound = new Audio('/assets/audio/notification.mp3');
 
 function playNotificationSound() {
-  notifySound.currentTime = 0; // Đưa file âm thanh về giây 0 để có thể phát lại ngay lập tức
+  notifySound.currentTime = 0;
   notifySound.play().catch(err => {
-    // Trình duyệt sẽ chặn phát nhạc tự động nếu người dùng chưa tương tác (click) trên trang lần nào
-    console.log('Chờ người dùng tương tác với trang để phát âm thanh:', err);
+    console.log('Chờ tương tác để phát âm thanh:', err);
   });
 }
-// Lắng nghe sự kiện Realtime để phát tiếng báo
-supabase.channel('feed-live')
-  .on('postgres_changes', { event: '*', schema: 'public', table: 'post_likes' }, payload => {
-    const me = getCurrentUser();
-    // Nếu có người khác bấm like bài viết -> Phát âm thanh
-    if (me && payload.new && payload.new.user_id !== me.id) {
-      playNotificationSound(); // <-- GỌI HÀM Ở ĐÂY
-      toast('👍 Có người thích bài viết!', 'info');
-    }
-    loadPosts(true);
-  })
-  .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'comments' }, payload => {
-    const me = getCurrentUser();
-    // Nếu có người khác gửi bình luận -> Phát âm thanh
-    if (me && payload.new.user_id !== me.id) {
-      playNotificationSound(); // <-- GỌI HÀM Ở ĐÂY
-      toast('💬 Có bình luận mới!', 'info');
-    }
-    loadPosts(true);
-  })
-  .subscribe();
-
-// 1. Hàm lấy 10 bài viết theo trang
-async function loadPosts() {
-  if (isLoading || !hasMore) return;
-  isLoading = true;
-  showLoadingSpinner(true); // Hiển thị icon loading ở cuối trang
-
-  const from = page * PAGE_SIZE;
-  const to = from + PAGE_SIZE - 1;
-
-  try {
-    const { data: posts, error } = await supabase
-      .from('posts')
-      .select(`
-        *,
-        profiles:user_id (full_name, avatar_url),
-        comments (count),
-        post_likes (count)
-      `)
-      .order('created_at', { ascending: false })
-      .range(from, to);
-
-    if (error) throw error;
-
-    if (posts.length < PAGE_SIZE) {
-      hasMore = false; // Đã tải hết bài viết trong DB
-    }
-
-    if (posts.length > 0) {
-      renderPostsToUI(posts); // Hàm vẽ giao diện bài viết của bạn
-      page++; // Tăng số trang cho lần cuộn tiếp theo
-    }
-  } catch (err) {
-    console.error('Lỗi khi tải bài viết:', err.message);
-  } finally {
-    isLoading = false;
-    showLoadingSpinner(false);
-  }
-}
-
-// 2. Lắng nghe sự kiện Cuộn trang (Scroll Event)
-window.addEventListener('scroll', () => {
-  // Khi cuộn gần đến đáy trang (cách đáy 200px) thì tự động gọi loadPosts()
-  const { scrollTop, scrollHeight, clientHeight } = document.documentElement;
-  
-  if (scrollTop + clientHeight >= scrollHeight - 200) {
-    loadPosts();
-  }
-});
-
-// 3. Tải đợt 10 bài viết đầu tiên khi mới vào trang
-document.addEventListener('DOMContentLoaded', () => {
-  loadPosts();
-});
-
 
 function toast(msg, type='') { window.appToast?.(msg, type); }
 
@@ -107,7 +31,7 @@ function timeAgo(iso) {
   if (seconds < 60) return `${seconds}s`;
   const minutes = Math.floor(seconds / 60);
   if (minutes < 60) return `${minutes} phút`;
-  const hours = Math.floor(minutes / 60);
+  const hours = Math.floor(seconds / 60);
   if (hours < 24) return `${hours} giờ`;
   const days = Math.floor(hours / 24);
   if (days < 7) return `${days} ngày`;
@@ -118,27 +42,73 @@ function fallbackAvatar(name='User') {
   return `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=e4eef8&color=24527a`;
 }
 
-async function getVisiblePosts() {
-  const { data, error } = await supabase
-    .from('posts')
-    .select(`
-      id, user_id, content, image_url, privacy, created_at,
-      profiles (id, full_name, avatar_url),
-      post_likes (id, user_id, reaction_type, created_at),
-      comments (
-        id, post_id, user_id, parent_id, content, created_at, updated_at,
-        profiles (id, full_name, avatar_url),
-        comment_likes (id, user_id)
-      )
-    `)
-    .order('created_at', { ascending: false })
-    .limit(60);
+// ==========================================
+// 2. TẢI BÀI VIẾT VÀ PHÂN TRANG (10 BÀI/LẦN)
+// ==========================================
+async function loadPosts(reset = false) {
+  if (isLoading || (!hasMore && !reset)) return;
+  isLoading = true;
 
-  if (error) {
-    toast(error.message, 'error');
-    return [];
+  if (reset) {
+    page = 0;
+    hasMore = true;
+    posts = [];
+    if ($('feed-list')) {
+      $('feed-list').innerHTML = '<div style="text-align:center;padding:20px;color:#718096">Đang tải bảng tin...</div>';
+    }
   }
-  return data || [];
+
+  const from = page * PAGE_SIZE;
+  const to = from + PAGE_SIZE - 1;
+
+  try {
+    const { data, error } = await supabase
+      .from('posts')
+      .select(`
+        id, user_id, content, image_url, privacy, created_at,
+        profiles (id, full_name, avatar_url),
+        post_likes (id, user_id, reaction_type, created_at),
+        comments (
+          id, post_id, user_id, parent_id, content, created_at, updated_at,
+          profiles (id, full_name, avatar_url),
+          comment_likes (id, user_id)
+        )
+      `)
+      .order('created_at', { ascending: false })
+      .range(from, to);
+
+    if (error) throw error;
+
+    const newPosts = data || [];
+    if (newPosts.length < PAGE_SIZE) {
+      hasMore = false;
+    }
+
+    posts = reset ? newPosts : [...posts, ...newPosts];
+    page++;
+    renderFeedList();
+  } catch (err) {
+    console.error('Lỗi tải bài viết:', err.message);
+    toast(err.message, 'error');
+  } finally {
+    isLoading = false;
+  }
+}
+
+function renderFeedList() {
+  const container = $('feed-list');
+  if (!container) return;
+
+  if (!posts.length) {
+    container.innerHTML = `<div class="card" style="padding:30px;text-align:center;color:#718096">Chưa có bài viết phù hợp.</div>`;
+    return;
+  }
+
+  container.innerHTML = posts.map(postHtml).join('');
+
+  if (!hasMore) {
+    container.insertAdjacentHTML('beforeend', '<div style="text-align:center;padding:15px;color:#a0aec0;font-size:13px">Bạn đã xem hết bài viết.</div>');
+  }
 }
 
 function postHtml(post) {
@@ -224,16 +194,8 @@ function renderReplyState(postId) {
   return `<div class="reply-state"><span>Đang trả lời <strong>${escapeHtml(replyTarget.name)}</strong></span><button type="button" class="cancel-reply">Hủy</button></div>`;
 }
 
-async function renderFeed() {
-  posts = await getVisiblePosts();
-  $('feed-list').innerHTML = posts.length
-    ? posts.map(postHtml).join('')
-    : `<div class="card" style="padding:30px;text-align:center;color:#718096">Chưa có bài viết phù hợp.</div>`;
-}
-
 function findPost(postId) { return posts.find(p => p.id === postId); }
 
-// 1. GIỚI HẠN SỐ LƯỢNG STATUS (Tối đa 5 bài/ngày)
 async function checkPostLimit(userId) {
   const startOfDay = new Date();
   startOfDay.setHours(0,0,0,0);
@@ -254,12 +216,10 @@ async function submitPost(event) {
   if (!user) return;
 
   const rawContent = $('post-content').value.trim();
-  // 5. LỌC TỪ TỤC TĨU
   const content = filterProfanity(rawContent);
   const url = $('post-image-url').value.trim();
   const file = $('post-image').files[0];
 
-  // 3. GIỚI HẠN ĐỘ DÀI KÝ TỰ STATUS (Dưới 280 ký tự)
   if (content.length > 280) {
     toast('Độ dài status không được quá 280 ký tự.', 'error');
     return;
@@ -270,7 +230,6 @@ async function submitPost(event) {
     return;
   }
 
-  // KIỂM TRA GIỚI HẠN BÀI ĐĂNG
   const canPost = await checkPostLimit(user.id);
   if (!canPost) {
     toast('Bạn đã đạt giới hạn 5 bài đăng trong ngày hôm nay.', 'error');
@@ -292,7 +251,7 @@ async function submitPost(event) {
     event.target.reset();
     $('post-image-preview').classList.add('hidden');
     toast('Đã đăng bài.', 'success');
-    await renderFeed();
+    await loadPosts(true);
   } catch (err) {
     toast(err.message || 'Không thể đăng bài.', 'error');
   }
@@ -305,15 +264,12 @@ async function togglePostLike(postId) {
 
   const existing = (post.post_likes || []).find(x => x.user_id === user.id);
   if (existing) {
-    const { error } = await supabase.from('post_likes').delete().eq('id', existing.id);
-    if (error) toast(error.message, 'error');
+    await supabase.from('post_likes').delete().eq('id', existing.id);
   } else {
-    const { error } = await supabase.from('post_likes').insert({
+    await supabase.from('post_likes').insert({
       post_id: postId, user_id: user.id, reaction_type: 'like'
     });
-    if (error) toast(error.message, 'error');
   }
-  await renderFeed();
 }
 
 async function showPostLikes(postId) {
@@ -356,7 +312,6 @@ async function submitComment(event) {
   }
 
   if (!rawContent) return;
-  // 5. LỌC TỪ TỤC TĨU TRONG BÌNH LUẬN
   const content = filterProfanity(rawContent);
 
   const { error } = await supabase.from('comments').insert({
@@ -371,7 +326,6 @@ async function submitComment(event) {
   } else {
     replyTarget = null;
     form.reset();
-    await renderFeed();
   }
 }
 
@@ -379,7 +333,6 @@ async function deleteComment(commentId) {
   if (!confirm('Xóa bình luận này và toàn bộ trả lời bên dưới?')) return;
   const { error } = await supabase.from('comments').delete().eq('id', commentId);
   if (error) toast(error.message, 'error');
-  else await renderFeed();
 }
 
 async function toggleCommentLike(commentId) {
@@ -396,26 +349,29 @@ async function toggleCommentLike(commentId) {
 
   const { error } = await query;
   if (error) toast(error.message, 'error');
-  else await renderFeed();
 }
 
 async function deletePost(postId) {
   if (!confirm('Bạn chắc muốn xóa bài viết?')) return;
   const { error } = await supabase.from('posts').delete().eq('id', postId);
   if (error) toast(error.message, 'error');
-  else await renderFeed();
 }
 
+// XỬ LÝ SỰ KIỆN CLICK TRÊN BẢNG TIN (BÌNH LUẬN, LIKE, XÓA)
 function handleFeedClick(event) {
   const postEl = event.target.closest('[data-post-id]');
   if (!postEl) return;
   const postId = postEl.dataset.postId;
 
   const action = event.target.closest('[data-action]')?.dataset.action;
+  
   if (action === 'like') return togglePostLike(postId);
   if (action === 'likes') return showPostLikes(postId);
+  
+  // Bấm nút Bình luận -> Focus ô nhập liệu
   if (action === 'focus-comment') {
-    postEl.querySelector('.comment-form input')?.focus();
+    const input = postEl.querySelector('.comment-form input');
+    if (input) input.focus();
     return;
   }
 
@@ -424,10 +380,13 @@ function handleFeedClick(event) {
     const commentId = commentEl.dataset.commentId;
     const cAction = event.target.closest('[data-comment-action]')?.dataset.commentAction;
     const comment = findPost(postId)?.comments?.find(c => c.id === commentId);
+    
     if (cAction === 'like') return toggleCommentLike(commentId);
     if (cAction === 'reply') {
       replyTarget = { postId, commentId, name: comment?.profiles?.full_name || 'User' };
-      renderFeed();
+      renderFeedList();
+      const input = postEl.querySelector('.comment-form input');
+      if (input) input.focus();
       return;
     }
     if (cAction === 'delete') return deleteComment(commentId);
@@ -435,9 +394,10 @@ function handleFeedClick(event) {
 
   if (event.target.closest('.cancel-reply')) {
     replyTarget = null;
-    renderFeed();
+    renderFeedList();
     return;
   }
+  
   if (event.target.closest('.delete-post')) deletePost(postId);
 }
 
@@ -452,28 +412,52 @@ function previewPostImage() {
   $('post-image-preview').classList.remove('hidden');
 }
 
-export function initFeed() {
-  $('post-form').addEventListener('submit', submitPost);
-  $('post-image').addEventListener('change', previewPostImage);
-  $('feed-list').addEventListener('click', handleFeedClick);
-  $('feed-list').addEventListener('submit', e => {
-    if (e.target.closest('.comment-form')) {
-      submitComment(e);
+// LẮNG NGHE CUỘN TRANG (INFINITE SCROLL)
+function setupInfiniteScroll() {
+  window.addEventListener('scroll', () => {
+    const { scrollTop, scrollHeight, clientHeight } = document.documentElement;
+    if (scrollTop + clientHeight >= scrollHeight - 200) {
+      loadPosts(false);
     }
   });
-  window.addEventListener('auth-ready', renderFeed);
-  window.addEventListener('profile-updated', renderFeed);
+}
 
-  // 6. THÔNG BÁO KHI CÓ BÌNH LUẬN MỚI
+// KHI TRANG KHỞI TẠO
+export function initFeed() {
+  if ($('post-form')) $('post-form').addEventListener('submit', submitPost);
+  if ($('post-image')) $('post-image').addEventListener('change', previewPostImage);
+  if ($('feed-list')) {
+    $('feed-list').addEventListener('click', handleFeedClick);
+    $('feed-list').addEventListener('submit', e => {
+      if (e.target.closest('.comment-form')) {
+        submitComment(e);
+      }
+    });
+  }
+
+  setupInfiniteScroll();
+
+  window.addEventListener('auth-ready', () => loadPosts(true));
+  window.addEventListener('profile-updated', () => loadPosts(true));
+
+  // KÊNH LẮNG NGHE REALTIME & PHÁT ÂM THANH DUY NHẤT
   supabase.channel('feed-live')
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'posts' }, renderFeed)
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'post_likes' }, renderFeed)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'posts' }, () => loadPosts(true))
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'post_likes' }, payload => {
+      const me = getCurrentUser();
+      if (me && payload.new && payload.new.user_id !== me.id) {
+        playNotificationSound();
+        toast('👍 Có người thích bài viết!', 'info');
+      }
+      loadPosts(true);
+    })
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'comments' }, payload => {
       const me = getCurrentUser();
       if (me && payload.new.user_id !== me.id) {
-        toast('💬 Có bình luận mới trên bảng tin!', 'info');
+        playNotificationSound();
+        toast('💬 Có bình luận mới!', 'info');
       }
-      renderFeed();
+      loadPosts(true);
     })
     .subscribe();
 }

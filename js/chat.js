@@ -1,6 +1,6 @@
 import { supabase, APP_CONFIG } from './supabase-client.js';
 import { getCurrentUser } from './auth.js';
-import { avatarFor, uploadImage, escapeHtml, filterProfanity } from './profile.js';
+import { avatarFor, uploadImage, escapeHtml, filterProfanity, openUserProfile } from './profile.js';
 
 const $ = id => document.getElementById(id);
 let conversations = [];
@@ -179,9 +179,9 @@ function renderMessages() {
 
     const reactions = (m.reactions || []).map(r => `<span class="reaction-chip">${escapeHtml(r.emoji)}</span>`).join('');
     return `<div class="message-row ${mine ? 'mine' : ''}" data-message-id="${m.id}">
-      ${!mine ? `<img class="avatar" style="width:30px;height:30px" src="${escapeHtml(sender.avatar_url || fallbackAvatar(sender.full_name))}" alt="">` : ''}
+      ${!mine ? `<img class="avatar clickable-user" data-user-id="${sender.id}" style="width:30px;height:30px" src="${escapeHtml(sender.avatar_url || fallbackAvatar(sender.full_name))}" alt="">` : ''}
       <div>
-        ${!mine && activeConversation.type === 'group' ? `<div class="message-sender">${escapeHtml(sender.full_name || 'User')}</div>` : ''}
+        ${!mine && activeConversation.type === 'group' ? `<div class="message-sender clickable-user" data-user-id="${sender.id}">${escapeHtml(sender.full_name || 'User')}</div>` : ''}
         <div class="message-bubble">
           ${body}
           <div class="message-time">${timeShort(m.created_at)}</div>
@@ -217,14 +217,12 @@ async function sendMessage(event) {
   if (!user || !activeConversation) return;
 
   const rawContent = $('message-input').value.trim();
-  // 5. LỌC TỪ TỤC TĨU TRONG CHAT
   const content = filterProfanity(rawContent);
   const file = $('message-media').files[0];
   if (!content && !file) return;
 
   try {
     let mediaUrl = null;
-    // 2. DUNG LƯỢNG ÁNH ĐÃ ĐƯỢC ÉP TẠI uploadImage (4MB)
     if (file) mediaUrl = await uploadImage(file, APP_CONFIG.mediaBucket, user.id);
 
     const { error } = await supabase.from('messages').insert({
@@ -294,7 +292,6 @@ function subscribeConversation() {
     .subscribe();
 }
 
-// 4. CHỌN NGƯỜI TRÒ CHUYỆN / TẠO NHÓM
 async function searchUsers(term, target='direct') {
   const user = getCurrentUser();
   if (!user) return;
@@ -311,8 +308,8 @@ async function searchUsers(term, target='direct') {
   }
   const html = (data || []).map(p => `
     <div class="person">
-      <img class="avatar" src="${escapeHtml(p.avatar_url || fallbackAvatar(p.full_name))}" alt="">
-      <div class="person-info"><strong>${escapeHtml(p.full_name)}</strong><span>${escapeHtml(p.email || '')}</span></div>
+      <img class="avatar clickable-user" data-user-id="${p.id}" src="${escapeHtml(p.avatar_url || fallbackAvatar(p.full_name))}" alt="">
+      <div class="person-info"><strong class="clickable-user" data-user-id="${p.id}">${escapeHtml(p.full_name)}</strong><span>${escapeHtml(p.email || '')}</span></div>
       ${target === 'direct'
         ? `<button class="person-action" data-user-id="${p.id}" data-action="start-direct">Chat</button>`
         : `<button class="person-action" data-user-id="${p.id}" data-action="select-group">${selectedGroupUsers.some(x => x.id === p.id) ? 'Bỏ chọn' : 'Chọn'}</button>`}
@@ -407,8 +404,8 @@ async function openGroupModal() {
       || activeMembers.find(x => x.user_id === getCurrentUser()?.id)?.role === 'co_admin';
     const roleLabel = m.role === 'admin' ? 'Trưởng nhóm' : m.role === 'co_admin' ? 'Phó nhóm' : 'Thành viên';
     return `<div class="person">
-      <img class="avatar" src="${escapeHtml(p.avatar_url || fallbackAvatar(p.full_name))}" alt="">
-      <div class="person-info"><strong>${escapeHtml(p.full_name || 'User')}</strong><span>${roleLabel}</span></div>
+      <img class="avatar clickable-user" data-user-id="${p.id}" src="${escapeHtml(p.avatar_url || fallbackAvatar(p.full_name))}" alt="">
+      <div class="person-info"><strong class="clickable-user" data-user-id="${p.id}">${escapeHtml(p.full_name || 'User')}</strong><span>${roleLabel}</span></div>
       ${canManage && !isMe && m.role !== 'admin' ? `<button class="person-action" data-remove-member="${m.user_id}">Xóa</button>` : ''}
     </div>`;
   }).join('');
@@ -511,6 +508,12 @@ export function initChat() {
   $('mobile-chat-back').addEventListener('click', () => showView('feed-view'));
 
   $('message-list').addEventListener('click', e => {
+    const userBtn = e.target.closest('.clickable-user');
+    if (userBtn && userBtn.dataset.userId) {
+      openUserProfile(userBtn.dataset.userId);
+      return;
+    }
+
     const row = e.target.closest('[data-message-id]');
     const button = e.target.closest('[data-message-action]');
     if (!row || !button) return;
@@ -526,6 +529,12 @@ export function initChat() {
   $('user-search').addEventListener('input', debounce(e => searchUsers(e.target.value, 'direct')));
   $('group-search').addEventListener('input', debounce(e => searchUsers(e.target.value, 'group')));
   $('user-search-results').addEventListener('click', e => {
+    const userBtn = e.target.closest('.clickable-user');
+    if (userBtn && userBtn.dataset.userId) {
+      closeModal('new-chat-modal');
+      openUserProfile(userBtn.dataset.userId);
+      return;
+    }
     const b = e.target.closest('[data-action="start-direct"]');
     if (b) startDirect(b.dataset.userId);
   });
@@ -545,6 +554,12 @@ export function initChat() {
   $('group-info-btn').addEventListener('click', openGroupModal);
   $('save-group-name').addEventListener('click', saveGroupName);
   $('group-members-list').addEventListener('click', e => {
+    const userBtn = e.target.closest('.clickable-user');
+    if (userBtn && userBtn.dataset.userId) {
+      closeModal('group-modal');
+      openUserProfile(userBtn.dataset.userId);
+      return;
+    }
     const b = e.target.closest('[data-remove-member]');
     if (b) removeMember(b.dataset.removeMember);
   });
@@ -556,6 +571,13 @@ export function initChat() {
 
   setupTabs();
 
+  // Bắt sự kiện tạo chat nhanh khi ấn nút "Nhắn tin" trong trang cá nhân
+  window.addEventListener('start-direct-chat', async (e) => {
+    if (e.detail?.userId) {
+      await startDirect(e.detail.userId);
+    }
+  });
+
   window.addEventListener('auth-ready', async () => {
     await loadConversations();
     showView('feed-view');
@@ -566,13 +588,10 @@ export function initChat() {
     if (chatChannel) supabase.removeChannel(chatChannel);
   });
 
-  // 6. THÔNG BÁO KHI CÓ TIN NHẮN MỚI REALTIME
-  // 6. THÔNG BÁO KHI CÓ TIN NHẮN MỚI REALTIME
   supabase.channel('chat-list-live')
     .on('postgres_changes', { event:'INSERT', schema:'public', table:'messages' }, payload => {
       const me = getCurrentUser();
       if (me && payload.new.sender_id !== me.id) {
-        playNotificationSound(); // <-- THÊM ÂM THANH VÀO ĐÂY
         toast('📩 Bạn có tin nhắn mới!', 'info');
       }
       loadConversations();

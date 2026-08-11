@@ -27,14 +27,24 @@ function setAuthUI(user) {
 async function syncProfile(user) {
   const metadata = user.user_metadata || {};
   const fullName = metadata.full_name || metadata.name || user.email?.split('@')[0] || 'User';
-  const avatarUrl = metadata.avatar_url || metadata.picture || null;
+  const googleAvatar = metadata.avatar_url || metadata.picture || null;
+
+  // Kiểm tra profile hiện tại
+  const { data: existingProfile } = await supabase
+    .from('profiles')
+    .select('avatar_url, full_name')
+    .eq('id', user.id)
+    .single();
+
+  // Chỉ lấy avatar Google nếu trong DB chưa có avatar nào
+  const avatarUrl = existingProfile?.avatar_url || googleAvatar;
 
   const { error } = await supabase.from('profiles').upsert({
     id: user.id,
     email: user.email || null,
-    full_name: fullName,
+    full_name: existingProfile?.full_name || fullName,
     avatar_url: avatarUrl
-  }, { onConflict: 'id', ignoreDuplicates: false });
+  }, { onConflict: 'id' });
 
   if (error) console.warn('Profile sync:', error.message);
 }

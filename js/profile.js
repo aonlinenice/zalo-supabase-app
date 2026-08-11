@@ -4,7 +4,7 @@ import { getCurrentUser } from './auth.js';
 const $ = id => document.getElementById(id);
 
 // Danh sách từ cấm lọc tục tĩu
-const BAD_WORDS = ['dm', 'dmm', 'vl', 'cl', 'vãi', 'đột', 'đm', 'đmm', 'bậy', 'tục'];
+const BAD_WORDS = ['lồn', 'cặc', 'dâm', 'đụ', 'sex', 'nứng', 'đụ má'];
 
 function filterProfanity(text = '') {
   if (!text) return text;
@@ -26,10 +26,9 @@ function avatarFor(profile) {
   return profile?.avatar_url || fallbackAvatar(profile?.full_name || 'User');
 }
 
-// 2. GIỚI HẠN DUNG LƯỢNG ÁNH 4MB
 async function uploadImage(file, bucket, folder) {
   if (!file) return null;
-  const MAX_SIZE = 4 * 1024 * 1024; // 4MB
+  const MAX_SIZE = 4 * 1024 * 1024;
   if (file.size > MAX_SIZE) throw new Error('Dung lượng ảnh tối đa cho phép là 4MB.');
   if (!file.type.startsWith('image/')) throw new Error('Chỉ chấp nhận file định dạng ảnh.');
 
@@ -64,12 +63,37 @@ function renderMyProfile(profile) {
   if (!profile) return;
   const url = avatarFor(profile);
   $('me-card').innerHTML = `
-    <img class="avatar" src="${escapeAttr(url)}" alt="">
+    <img class="avatar clickable-user" data-user-id="${profile.id}" src="${escapeAttr(url)}" alt="">
     <div class="me-info">
-      <strong>${escapeHtml(profile.full_name || 'User')}</strong>
+      <strong class="clickable-user" data-user-id="${profile.id}">${escapeHtml(profile.full_name || 'User')}</strong>
       <span>${escapeHtml(profile.bio || 'Chưa có trạng thái')}</span>
     </div>`;
   $('composer-avatar').src = url;
+}
+
+// XEM HỒ SƠ NGƯỜI DÙNG KHÁC
+async function openUserProfile(userId) {
+  const currentUser = getCurrentUser();
+  if (currentUser && currentUser.id === userId) {
+    openProfileModal();
+    return;
+  }
+
+  const { data, error } = await supabase.from('profiles').select('*').eq('id', userId).single();
+  if (error || !data) {
+    toast('Không thể tải thông tin người dùng.', 'error');
+    return;
+  }
+
+  $('user-view-avatar').src = avatarFor(data);
+  $('user-view-name').textContent = data.full_name || 'User';
+  $('user-view-email').textContent = data.email || '';
+  $('user-view-bio').textContent = data.bio || 'Chưa có trạng thái / Bio.';
+  
+  const chatBtn = $('user-view-chat-btn');
+  chatBtn.dataset.userId = data.id;
+
+  $('user-profile-modal').classList.remove('hidden');
 }
 
 function openProfileModal() {
@@ -112,7 +136,7 @@ async function saveProfile(event) {
     $('profile-avatar-preview').src = avatarFor(data);
     $('profile-avatar-file').value = '';
     $('profile-modal').classList.add('hidden');
-    toast('Đã cập nhật hồ sơ.', 'success');
+    toast('Đã cập nhật hồ sơ thành công.', 'success');
     window.dispatchEvent(new CustomEvent('profile-updated', { detail: data }));
   } catch (err) {
     toast(err.message || 'Không thể cập nhật hồ sơ.', 'error');
@@ -124,7 +148,7 @@ function escapeHtml(value='') {
 }
 function escapeAttr(value='') { return escapeHtml(value); }
 
-export { avatarFor, fallbackAvatar, uploadImage, escapeHtml, filterProfanity };
+export { avatarFor, fallbackAvatar, uploadImage, escapeHtml, filterProfanity, openUserProfile };
 
 export function initProfile() {
   $('profile-btn').addEventListener('click', openProfileModal);
@@ -134,6 +158,13 @@ export function initProfile() {
     const file = $('profile-avatar-file').files[0];
     if (file) $('profile-avatar-preview').src = URL.createObjectURL(file);
   });
+  
+  $('user-view-chat-btn').addEventListener('click', (e) => {
+    const targetUserId = e.target.dataset.userId;
+    $('user-profile-modal').classList.add('hidden');
+    window.dispatchEvent(new CustomEvent('start-direct-chat', { detail: { userId: targetUserId } }));
+  });
+
   document.querySelectorAll('.close-modal').forEach(btn => {
     btn.addEventListener('click', () => btn.closest('.modal').classList.add('hidden'));
   });

@@ -1,27 +1,21 @@
 import { supabase, APP_CONFIG } from './supabase-client.js';
 import { getCurrentUser } from './auth.js';
-import { avatarFor, uploadImage, escapeHtml, filterProfanity } from './profile.js';
+import { avatarFor, uploadImage, escapeHtml, filterProfanity, openUserProfile } from './profile.js';
 
 const $ = id => document.getElementById(id);
 let posts = [];
 let replyTarget = null;
 
-// Quản lý phân trang Infinite Scroll (10 bài / lần)
 let page = 0;
 const PAGE_SIZE = 10;
 let isLoading = false;
 let hasMore = true;
 
-// ==========================================
-// 1. CẤU HÌNH VÀ HÀM PHÁT ÂM THANH THÔNG BÁO
-// ==========================================
 const notifySound = new Audio('https://etquvhtzwqzjskmkxlog.supabase.co/storage/v1/object/public/assets/audio/notification.mp3');
 
 function playNotificationSound() {
   notifySound.currentTime = 0;
-  notifySound.play().catch(err => {
-    console.log('Chờ tương tác để phát âm thanh:', err);
-  });
+  notifySound.play().catch(err => console.log('Chờ tương tác để phát âm thanh:', err));
 }
 
 function toast(msg, type='') { window.appToast?.(msg, type); }
@@ -42,9 +36,6 @@ function fallbackAvatar(name='User') {
   return `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=e4eef8&color=24527a`;
 }
 
-// ==========================================
-// 2. TẢI BÀI VIẾT VÀ PHÂN TRANG (10 BÀI/LẦN)
-// ==========================================
 async function loadPosts(reset = false) {
   if (isLoading || (!hasMore && !reset)) return;
   isLoading = true;
@@ -123,9 +114,9 @@ function postHtml(post) {
 
   return `<article class="post card" data-post-id="${post.id}">
     <div class="post-head">
-      <img class="avatar" src="${escapeHtml(user.avatar_url || fallbackAvatar(user.full_name))}" alt="">
+      <img class="avatar clickable-user" data-user-id="${user.id}" src="${escapeHtml(user.avatar_url || fallbackAvatar(user.full_name))}" alt="">
       <div class="post-author">
-        <strong>${escapeHtml(user.full_name || 'User')}</strong>
+        <strong class="clickable-user" data-user-id="${user.id}">${escapeHtml(user.full_name || 'User')}</strong>
         <span>${timeAgo(post.created_at)} · ${privacyLabel(post.privacy)}</span>
       </div>
       ${me?.id === post.user_id ? `<button class="icon-btn delete-post" title="Xóa bài">⋮</button>` : ''}
@@ -169,10 +160,10 @@ function renderComments(post) {
     const liked = (c.comment_likes || []).some(x => x.user_id === getCurrentUser()?.id);
     const canDelete = getCurrentUser()?.id === c.user_id || getCurrentUser()?.id === post.user_id;
     return `<div class="comment ${depth ? 'reply' : ''}" data-comment-id="${c.id}">
-      <img class="avatar" style="width:32px;height:32px" src="${escapeHtml(user.avatar_url || fallbackAvatar(user.full_name))}" alt="">
+      <img class="avatar clickable-user" data-user-id="${user.id}" style="width:32px;height:32px" src="${escapeHtml(user.avatar_url || fallbackAvatar(user.full_name))}" alt="">
       <div class="comment-body">
         <div class="comment-bubble">
-          <strong>${escapeHtml(user.full_name || 'User')}</strong>
+          <strong class="clickable-user" data-user-id="${user.id}">${escapeHtml(user.full_name || 'User')}</strong>
           <p>${escapeHtml(c.content)}</p>
         </div>
         <div class="comment-tools">
@@ -291,8 +282,8 @@ async function showPostLikes(postId) {
   }
   $('likes-list').innerHTML = (data || []).map(p => `
     <div class="person">
-      <img class="avatar" src="${escapeHtml(p.avatar_url || fallbackAvatar(p.full_name))}" alt="">
-      <div class="person-info"><strong>${escapeHtml(p.full_name)}</strong></div>
+      <img class="avatar clickable-user" data-user-id="${p.id}" src="${escapeHtml(p.avatar_url || fallbackAvatar(p.full_name))}" alt="">
+      <div class="person-info"><strong class="clickable-user" data-user-id="${p.id}">${escapeHtml(p.full_name)}</strong></div>
     </div>`).join('');
 }
 
@@ -357,8 +348,14 @@ async function deletePost(postId) {
   if (error) toast(error.message, 'error');
 }
 
-// XỬ LÝ SỰ KIỆN CLICK TRÊN BẢNG TIN (BÌNH LUẬN, LIKE, XÓA)
 function handleFeedClick(event) {
+  // LẮNG NGHE SỰ KIỆN CLICK VÀO TÊN HOẶC AVATAR NGƯỜI DÙNG
+  const userBtn = event.target.closest('.clickable-user');
+  if (userBtn && userBtn.dataset.userId) {
+    openUserProfile(userBtn.dataset.userId);
+    return;
+  }
+
   const postEl = event.target.closest('[data-post-id]');
   if (!postEl) return;
   const postId = postEl.dataset.postId;
@@ -368,7 +365,6 @@ function handleFeedClick(event) {
   if (action === 'like') return togglePostLike(postId);
   if (action === 'likes') return showPostLikes(postId);
   
-  // Bấm nút Bình luận -> Focus ô nhập liệu
   if (action === 'focus-comment') {
     const input = postEl.querySelector('.comment-form input');
     if (input) input.focus();
@@ -412,7 +408,6 @@ function previewPostImage() {
   $('post-image-preview').classList.remove('hidden');
 }
 
-// LẮNG NGHE CUỘN TRANG (INFINITE SCROLL)
 function setupInfiniteScroll() {
   window.addEventListener('scroll', () => {
     const { scrollTop, scrollHeight, clientHeight } = document.documentElement;
@@ -422,7 +417,6 @@ function setupInfiniteScroll() {
   });
 }
 
-// KHI TRANG KHỞI TẠO
 export function initFeed() {
   if ($('post-form')) $('post-form').addEventListener('submit', submitPost);
   if ($('post-image')) $('post-image').addEventListener('change', previewPostImage);
@@ -435,13 +429,20 @@ export function initFeed() {
     });
   }
 
+  // Sự kiện click toàn cục cho danh sách Like
+  $('likes-modal').addEventListener('click', e => {
+    const userBtn = e.target.closest('.clickable-user');
+    if (userBtn && userBtn.dataset.userId) {
+      $('likes-modal').classList.add('hidden');
+      openUserProfile(userBtn.dataset.userId);
+    }
+  });
+
   setupInfiniteScroll();
 
   window.addEventListener('auth-ready', () => loadPosts(true));
   window.addEventListener('profile-updated', () => loadPosts(true));
 
-  // KÊNH LẮNG NGHE REALTIME & PHÁT ÂM THANH DUY NHẤT
-  // KÊNH LẮNG NGHE REALTIME & PHÁT ÂM THANH
   supabase.channel('feed-live')
     .on('postgres_changes', { event: '*', schema: 'public', table: 'posts' }, () => loadPosts(true))
     .on('postgres_changes', { event: '*', schema: 'public', table: 'post_likes' }, payload => {
@@ -454,12 +455,11 @@ export function initFeed() {
     })
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'comments' }, payload => {
       const me = getCurrentUser();
-      if (me && payload.new.user_id !== me.id) {
+      if (me && payload.new_user_id !== me.id) {
         playNotificationSound();
         toast('💬 Có bình luận mới!', 'info');
       }
       loadPosts(true);
     })
-    
     .subscribe();
 }

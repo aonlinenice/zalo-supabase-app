@@ -608,5 +608,6 @@ export function initChat() {
     })
     .on('postgres_changes', { event: '*', schema: 'public', table: 'conversation_members' }, loadConversations)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'conversations' }, loadConversations)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, loadConversations)
     .subscribe();
 }

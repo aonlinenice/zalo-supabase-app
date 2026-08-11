@@ -1,7 +1,6 @@
-// js/chat.js
 import { supabase, APP_CONFIG } from './supabase-client.js';
 import { getCurrentUser } from './auth.js';
-import { avatarFor, uploadImage, escapeHtml } from './profile.js';
+import { avatarFor, uploadImage, escapeHtml, filterProfanity } from './profile.js';
 
 const $ = id => document.getElementById(id);
 let conversations = [];
@@ -114,7 +113,6 @@ async function openConversation(id) {
 
 async function loadMembers() {
   if (!activeConversation) return;
-  // SỬA LỖI CÚ PHÁP TẠI ĐÂY
   const { data, error } = await supabase
     .from('conversation_members')
     .select('id, user_id, role, status, joined_at, profiles (id, full_name, avatar_url, email)')
@@ -127,7 +125,6 @@ async function loadMembers() {
 
 async function loadMessages() {
   if (!activeConversation) return;
-  // SỬA CÚ PHÁP JOIN ĐỂ TRÁNH LỖI SCHEMA CACHE
   const { data, error } = await supabase.from('messages')
     .select(`
       id, conversation_id, sender_id, content, media_url, reply_to_id, is_recalled, created_at,
@@ -219,12 +216,15 @@ async function sendMessage(event) {
   const user = getCurrentUser();
   if (!user || !activeConversation) return;
 
-  const content = $('message-input').value.trim();
+  const rawContent = $('message-input').value.trim();
+  // 5. LỌC TỪ TỤC TĨU TRONG CHAT
+  const content = filterProfanity(rawContent);
   const file = $('message-media').files[0];
   if (!content && !file) return;
 
   try {
     let mediaUrl = null;
+    // 2. DUNG LƯỢNG ÁNH ĐÃ ĐƯỢC ÉP TẠI uploadImage (4MB)
     if (file) mediaUrl = await uploadImage(file, APP_CONFIG.mediaBucket, user.id);
 
     const { error } = await supabase.from('messages').insert({
@@ -279,7 +279,7 @@ function subscribeConversation() {
     .on('postgres_changes', {
       event: '*', schema: 'public', table: 'messages',
       filter: `conversation_id=eq.${activeConversation.id}`
-    }, async () => {
+    }, async payload => {
       await loadMessages();
       await loadConversations();
     })
@@ -294,6 +294,7 @@ function subscribeConversation() {
     .subscribe();
 }
 
+// 4. CHỌN NGƯỜI TRÒ CHUYỆN / TẠO NHÓM
 async function searchUsers(term, target='direct') {
   const user = getCurrentUser();
   if (!user) return;
@@ -354,7 +355,9 @@ function renderSelectedGroup() {
 
 async function createGroup() {
   const user = getCurrentUser();
-  const name = $('group-name').value.trim();
+  const rawName = $('group-name').value.trim();
+  const name = filterProfanity(rawName);
+
   if (!user || !name) {
     toast('Hãy nhập tên nhóm.', 'error');
     return;
@@ -414,7 +417,7 @@ async function openGroupModal() {
 
 async function saveGroupName() {
   const user = getCurrentUser();
-  const name = $('edit-group-name').value.trim();
+  const name = filterProfanity($('edit-group-name').value.trim());
   if (!user || !activeConversation || !name) return;
 
   const me = activeMembers.find(m => m.user_id === user.id);
@@ -563,9 +566,15 @@ export function initChat() {
     if (chatChannel) supabase.removeChannel(chatChannel);
   });
 
-  // Realtime updates
+  // 6. THÔNG BÁO KHI CÓ TIN NHẮN MỚI REALTIME
   supabase.channel('chat-list-live')
-    .on('postgres_changes', { event:'*', schema:'public', table:'messages' }, loadConversations)
+    .on('postgres_changes', { event:'INSERT', schema:'public', table:'messages' }, payload => {
+      const me = getCurrentUser();
+      if (me && payload.new.sender_id !== me.id) {
+        toast('📩 Bạn có tin nhắn mới!', 'info');
+      }
+      loadConversations();
+    })
     .on('postgres_changes', { event:'*', schema:'public', table:'conversation_members' }, loadConversations)
     .on('postgres_changes', { event:'*', schema:'public', table:'conversations' }, loadConversations)
     .subscribe();

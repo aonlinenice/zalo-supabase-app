@@ -15,7 +15,7 @@ let hasMore = true;
 // ==========================================
 // 1. CẤU HÌNH VÀ HÀM PHÁT ÂM THANH THÔNG BÁO
 // ==========================================
-const notifySound = new Audio('/assets/audio/notification.mp3');
+const notifySound = new Audio('https://etquvhtzwqzjskmkxlog.supabase.co/storage/v1/object/public/assets/audio/notification.mp3');
 
 function playNotificationSound() {
   notifySound.currentTime = 0;

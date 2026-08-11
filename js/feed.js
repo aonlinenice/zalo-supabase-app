@@ -460,14 +460,6 @@ export function initFeed() {
       }
       loadPosts(true);
     })
-    // 💥 BỔ SUNG ĐOẠN NÀY ĐỂ BẮT TIN NHẮN MỚI
-    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, payload => {
-      const me = getCurrentUser();
-      // Nếu tin nhắn do người khác gửi (không phải chính mình gửi)
-      if (me && payload.new && payload.new.sender_id !== me.id) {
-        playNotificationSound(); // Phát âm thanh
-        toast('📩 Bạn có tin nhắn mới!', 'info'); // Hiển thị toast thông báo
-      }
-    })
+    
     .subscribe();
 }

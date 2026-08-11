@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="theme-color" content="#0b6bcb">
-  <title>Connect — Status & Chat</title>
+  <title>Mạng nội bộ</title>
   <link rel="stylesheet" href="./style.css">
 </head>
 <body>
@@ -128,7 +128,7 @@
     </main>
   </div>
 
-  <!-- Profile modal -->
+  <!-- Profile modal (Cá nhân) -->
   <div id="profile-modal" class="modal hidden">
     <div class="modal-card">
       <div class="modal-head"><h3>Hồ sơ cá nhân</h3><button class="icon-btn close-modal">×</button></div>
@@ -143,6 +143,22 @@
         <label class="field"><span>Bio / trạng thái</span><textarea id="profile-bio" class="input" rows="3" maxlength="160"></textarea></label>
         <button class="btn primary full" type="submit">Lưu thay đổi</button>
       </form>
+    </div>
+  </div>
+
+  <!-- User Profile View Modal (Xem trang cá nhân người khác) -->
+  <div id="user-profile-modal" class="modal hidden">
+    <div class="modal-card small-card">
+      <div class="modal-head"><h3>Trang cá nhân</h3><button class="icon-btn close-modal">×</button></div>
+      <div class="profile-editor">
+        <img id="user-view-avatar" class="avatar xl" src="" alt="">
+        <h3 id="user-view-name" style="margin:5px 0 0 0;">User Name</h3>
+        <span id="user-view-email" style="font-size:12px;color:var(--muted)">email@domain.com</span>
+      </div>
+      <div class="field" style="text-align:center;margin-top:10px;">
+        <p id="user-view-bio" style="font-style:italic;color:var(--text);font-size:14px;background:#f6f9fc;padding:10px;border-radius:10px;">Bio</p>
+      </div>
+      <button id="user-view-chat-btn" class="btn primary full top-gap">💬 Nhắn tin</button>
     </div>
   </div>
 

@@ -41,7 +41,7 @@ async function loadConversations() {
   const { data, error } = await supabase
     .from('conversation_members')
     .select(`
-      conversation_id, role, status, joined_at,
+      conversation_id, role, status, joined_at, last_read_at,
       conversations (
         id, type, name, avatar_url, created_by, created_at,
         conversation_members (
@@ -59,11 +59,21 @@ async function loadConversations() {
     return;
   }
 
-  conversations = (data || []).map(x => x.conversations).filter(Boolean).map(c => {
+  conversations = (data || []).map(x => {
+    const c = x.conversations;
+    if (!c) return null;
     c.conversation_members = (c.conversation_members || []).filter(m => m.status === 'active');
     c.messages = (c.messages || []).sort((a,b) => new Date(a.created_at) - new Date(b.created_at));
+    
+    // Tính số tin nhắn chưa đọc: tin nhắn gửi sau thời điểm `last_read_at` (hoặc `joined_at`) và không phải do chính mình gửi
+    const lastRead = x.last_read_at || x.joined_at;
+    const unreadMessages = c.messages.filter(m => 
+      m.sender_id !== user.id && (!lastRead || new Date(m.created_at) > new Date(lastRead))
+    );
+    c.unreadCount = unreadMessages.length;
+
     return c;
-  }).sort((a,b) => {
+  }).filter(Boolean).sort((a,b) => {
     const at = a.messages.at(-1)?.created_at || a.created_at;
     const bt = b.messages.at(-1)?.created_at || b.created_at;
     return new Date(bt) - new Date(at);
@@ -79,6 +89,35 @@ async function loadConversations() {
   }
 }
 
+function renderConversationList() {
+  const me = getCurrentUser();
+  
+  $('chat-list').innerHTML = conversations.length ? conversations.map(c => {
+    const d = conversationDisplay(c);
+    const last = c.messages.at(-1);
+    const preview = last ? (last.is_recalled ? 'Tin nhắn đã được thu hồi' : (last.content || '📷 Ảnh')) : 'Chưa có tin nhắn';
+    
+    // Kiểm tra nếu có tin nhắn chưa đọc
+    const unread = c.unreadCount || 0;
+    const hasUnread = unread > 0;
+    
+    // Định dạng hiển thị số lượng: (1), (2)... (+9 nếu từ 10 tin trở lên)
+    let badgeText = '';
+    if (hasUnread) {
+      const countLabel = unread >= 10 ? '+9' : unread;
+      badgeText = `(${countLabel})`;
+    }
+
+    return `<button class="chat-list-item ${activeConversation?.id === c.id ? 'active' : ''} ${hasUnread ? 'unread' : ''}" data-conversation-id="${c.id}">
+      <img class="avatar" src="${escapeHtml(d.avatar)}" alt="">
+      <div class="chat-preview">
+        <strong class="${hasUnread ? 'unread-title' : ''}">${escapeHtml(d.name)}</strong>
+        <span class="${hasUnread ? 'unread-preview' : ''}">${badgeText ? badgeText + ' ' : ''}${escapeHtml(preview)} · ${last ? timeShort(last.created_at) : ''}</span>
+      </div>
+    </button>`;
+  }).join('') : `<div style="padding:10px;color:#718096;font-size:12px">Chưa có cuộc trò chuyện.</div>`;
+}
+
 function conversationDisplay(c) {
   const me = getCurrentUser();
   if (c.type === 'group') {
@@ -88,35 +127,7 @@ function conversationDisplay(c) {
   return { name: other?.full_name || 'Người dùng', avatar: other?.avatar_url || fallbackAvatar(other?.full_name), subtitle: 'Trò chuyện riêng' };
 }
 
-function renderConversationList() {
-  const me = getCurrentUser();
-  
-  // Tính tổng số tin nhắn chưa đọc để hiện badge ở menu Sidebar (nếu có)
-  let totalUnread = 0;
 
-  $('chat-list').innerHTML = conversations.length ? conversations.map(c => {
-    const d = conversationDisplay(c);
-    const last = c.messages.at(-1);
-    const preview = last ? (last.is_recalled ? 'Tin nhắn đã được thu hồi' : (last.content || '📷 Ảnh')) : 'Chưa có tin nhắn';
-    
-    // Giả sử ta tính số tin nhắn chưa đọc dựa trên logic hoặc trường unread_count (nếu bạn có lưu trong DB).
-    // Ở đây ta minh họa cách hiển thị định dạng số lượng chưa đọc (ví dụ biến c.unread_count hoặc quy ước giả định):
-    const unreadCount = c.unread_count || 0; 
-    let badgeHtml = '';
-    if (unreadCount > 0) {
-      const displayCount = unreadCount >= 10 ? '+9' : unreadCount;
-      badgeHtml = `<span class="unread-badge">(${displayCount})</span>`;
-    }
-
-    return `<button class="chat-list-item ${activeConversation?.id === c.id ? 'active' : ''}" data-conversation-id="${c.id}">
-      <img class="avatar" src="${escapeHtml(d.avatar)}" alt="">
-      <div class="chat-preview">
-        <strong>${escapeHtml(d.name)} ${badgeHtml}</strong>
-        <span>${escapeHtml(preview)} · ${last ? timeShort(last.created_at) : ''}</span>
-      </div>
-    </button>`;
-  }).join('') : `<div style="padding:10px;color:#718096;font-size:12px">Chưa có cuộc trò chuyện.</div>`;
-}
 
 async function openConversation(id) {
   const c = conversations.find(x => x.id === id);

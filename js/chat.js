@@ -136,6 +136,19 @@ async function openConversation(id) {
   replyMessage = null;
   $('chat-empty').classList.add('hidden');
   $('chat-panel').classList.remove('hidden');
+
+  const user = getCurrentUser();
+  if (user) {
+    // Cập nhật thời điểm đã xem tin nhắn vào database
+    await supabase
+      .from('conversation_members')
+      .update({ last_read_at: new Date().toISOString() })
+      .eq('conversation_id', id)
+      .eq('user_id', user.id);
+    
+    c.unreadCount = 0;
+  }
+
   renderConversationList();
   await loadMembers();
   await loadMessages();

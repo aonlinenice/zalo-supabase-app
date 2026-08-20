@@ -3,7 +3,7 @@ import { getCurrentUser } from './auth.js';
 import { avatarFor, uploadImage, escapeHtml, filterProfanity, openUserProfile } from './profile.js';
 
 const $ = id => document.getElementById(id);
-let conversations = [];
+let conversations = [];renderConversationList
 let activeConversation = null;
 let activeMembers = [];
 let messages = [];
@@ -89,14 +89,29 @@ function conversationDisplay(c) {
 }
 
 function renderConversationList() {
+  const me = getCurrentUser();
+  
+  // Tính tổng số tin nhắn chưa đọc để hiện badge ở menu Sidebar (nếu có)
+  let totalUnread = 0;
+
   $('chat-list').innerHTML = conversations.length ? conversations.map(c => {
     const d = conversationDisplay(c);
     const last = c.messages.at(-1);
     const preview = last ? (last.is_recalled ? 'Tin nhắn đã được thu hồi' : (last.content || '📷 Ảnh')) : 'Chưa có tin nhắn';
+    
+    // Giả sử ta tính số tin nhắn chưa đọc dựa trên logic hoặc trường unread_count (nếu bạn có lưu trong DB).
+    // Ở đây ta minh họa cách hiển thị định dạng số lượng chưa đọc (ví dụ biến c.unread_count hoặc quy ước giả định):
+    const unreadCount = c.unread_count || 0; 
+    let badgeHtml = '';
+    if (unreadCount > 0) {
+      const displayCount = unreadCount >= 10 ? '+9' : unreadCount;
+      badgeHtml = `<span class="unread-badge">(${displayCount})</span>`;
+    }
+
     return `<button class="chat-list-item ${activeConversation?.id === c.id ? 'active' : ''}" data-conversation-id="${c.id}">
       <img class="avatar" src="${escapeHtml(d.avatar)}" alt="">
       <div class="chat-preview">
-        <strong>${escapeHtml(d.name)}</strong>
+        <strong>${escapeHtml(d.name)} ${badgeHtml}</strong>
         <span>${escapeHtml(preview)} · ${last ? timeShort(last.created_at) : ''}</span>
       </div>
     </button>`;

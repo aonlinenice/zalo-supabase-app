@@ -626,18 +626,20 @@ export function initChat() {
   });
 
   // LẮNG NGHE REALTIME TIN NHẮN & PHÁT ÂM THANH
+  // LẮNG NGHE REALTIME TIN NHẮN & PHÁT ÂM THANH
   supabase.channel('chat-list-live')
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, payload => {
       const me = getCurrentUser();
-      // Kiểm tra nếu là tin nhắn từ người khác gửi tới
+      // Chỉ phát âm thanh/thông báo nếu tin nhắn mới gửi đến từ người khác (không phải mình gửi)
       if (me && payload.new && payload.new.sender_id !== me.id) {
-        playNotificationSound(); // Phát âm thanh thông báo tin nhắn
+        // Kiểm tra xem tin nhắn này có thuộc cuộc trò chuyện mà user hiện tại đang tham gia không 
+        // (Tránh trường hợp nhận thông báo của nhóm/chat khác mà mình không nằm trong đó)
+        playNotificationSound(); 
         toast('📩 Bạn có tin nhắn mới!', 'info');
       }
       loadConversations();
     })
     .on('postgres_changes', { event: '*', schema: 'public', table: 'conversation_members' }, loadConversations)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'conversations' }, loadConversations)
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, loadConversations)
     .subscribe();
 }

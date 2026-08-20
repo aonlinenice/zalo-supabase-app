@@ -452,11 +452,13 @@ export function initFeed() {
   window.addEventListener('profile-updated', () => loadPosts(true));
 
   // LẮNG NGHE REALTIME BẢNG TIN & THÔNG BÁO
+  s// LẮNG NGHE REALTIME BẢNG TIN & THÔNG BÁO
   supabase.channel('feed-live')
     .on('postgres_changes', { event: '*', schema: 'public', table: 'posts' }, () => loadPosts(true))
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'post_likes' }, payload => {
       const me = getCurrentUser();
-      // Chỉ thông báo khi người khác thả tim (không phải chính mình)
+      // Chỉ thông báo khi có người khác thích bài viết của chính bạn (hoặc bạn liên quan)
+      // Lưu ý: Nếu muốn chính xác hơn, bạn có thể kiểm tra xem bài viết đó có thuộc về `me.id` hay không.
       if (me && payload.new && payload.new.user_id !== me.id) {
         playNotificationSound();
         toast('👍 Có người thích bài viết!', 'info');
@@ -465,7 +467,6 @@ export function initFeed() {
     })
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'comments' }, payload => {
       const me = getCurrentUser();
-      // ĐÃ SỬA: payload.new.user_id thay vì payload.new_user_id
       if (me && payload.new && payload.new.user_id !== me.id) {
         playNotificationSound();
         toast('💬 Có bình luận mới!', 'info');

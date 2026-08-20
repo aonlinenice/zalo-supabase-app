@@ -12,7 +12,8 @@ let chatChannel = null;
 let selectedGroupUsers = [];
 // Khởi tạo âm thanh thông báo tin nhắn
 const notifySound = new Audio('https://etquvhtzwqzjskmkxlog.supabase.co/storage/v1/object/public/assets/audio/notification.mp3');
-
+// Lưu mốc thời gian đã đọc tin nhắn cho từng cuộc trò chuyện (key: conversationId, value: timestamp)
+const localReadMap = JSON.parse(localStorage.getItem('connect_last_reads') || '{}');
 function playNotificationSound() {
   notifySound.currentTime = 0;
   notifySound.play().catch(err => console.log('Chờ tương tác của người dùng để phát âm thanh:', err));
@@ -41,7 +42,7 @@ async function loadConversations() {
   const { data, error } = await supabase
     .from('conversation_members')
     .select(`
-      conversation_id, role, status, joined_at, last_read_at,
+      conversation_id, role, status, joined_at,
       conversations (
         id, type, name, avatar_url, created_by, created_at,
         conversation_members (
@@ -65,10 +66,10 @@ async function loadConversations() {
     c.conversation_members = (c.conversation_members || []).filter(m => m.status === 'active');
     c.messages = (c.messages || []).sort((a,b) => new Date(a.created_at) - new Date(b.created_at));
     
-    // Tính số tin nhắn chưa đọc: tin nhắn gửi sau thời điểm `last_read_at` (hoặc `joined_at`) và không phải do chính mình gửi
-    const lastRead = x.last_read_at || x.joined_at;
+    // Tính số tin nhắn chưa đọc dựa trên mốc thời gian đã đọc lưu trong localReadMap (hoặc thời điểm tham gia)
+    const lastReadTime = localReadMap[c.id] || x.joined_at;
     const unreadMessages = c.messages.filter(m => 
-      m.sender_id !== user.id && (!lastRead || new Date(m.created_at) > new Date(lastRead))
+      m.sender_id !== user.id && (!lastReadTime || new Date(m.created_at) > new Date(lastReadTime))
     );
     c.unreadCount = unreadMessages.length;
 
@@ -126,9 +127,6 @@ function conversationDisplay(c) {
   const other = c.conversation_members.find(m => m.user_id !== me?.id)?.profiles;
   return { name: other?.full_name || 'Người dùng', avatar: other?.avatar_url || fallbackAvatar(other?.full_name), subtitle: 'Trò chuyện riêng' };
 }
-
-
-
 async function openConversation(id) {
   const c = conversations.find(x => x.id === id);
   if (!c) return;
@@ -137,17 +135,10 @@ async function openConversation(id) {
   $('chat-empty').classList.add('hidden');
   $('chat-panel').classList.remove('hidden');
 
-  const user = getCurrentUser();
-  if (user) {
-    // Cập nhật thời điểm đã xem tin nhắn vào database
-    await supabase
-      .from('conversation_members')
-      .update({ last_read_at: new Date().toISOString() })
-      .eq('conversation_id', id)
-      .eq('user_id', user.id);
-    
-    c.unreadCount = 0;
-  }
+  // Đánh dấu cuộc trò chuyện này đã đọc bằng thời điểm hiện tại
+  localReadMap[id] = new Date().toISOString();
+  localStorage.setItem('connect_last_reads', JSON.stringify(localReadMap));
+  c.unreadCount = 0;
 
   renderConversationList();
   await loadMembers();

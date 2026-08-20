@@ -7,6 +7,15 @@
 .clickable-user {
   cursor: pointer;
 }
+.chat-list-item.unread .unread-title {
+  font-weight: 700;
+  color: #000;
+}
+
+.chat-list-item.unread .unread-preview {
+  font-weight: 600;
+  color: #111;
+}
 .clickable-user:hover {
   text-decoration: underline;
   opacity: 0.85;

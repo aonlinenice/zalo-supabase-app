@@ -288,7 +288,7 @@ async function showPostLikes(postId) {
 }
 
 async function submitComment(event) {
-  event.preventDefault();
+  event.preventDefault(); // Chặn hành vi submit form mặc định gây load lại trang
   const user = getCurrentUser();
   const form = event.target.closest('form') || event.currentTarget;
   if (!form) return;
@@ -305,6 +305,9 @@ async function submitComment(event) {
   if (!rawContent) return;
   const content = filterProfanity(rawContent);
 
+  // Lưu lại vị trí cuộn hiện tại của trang để tránh bị giật hoặc nhảy lên đầu
+  const scrollPosition = window.scrollY;
+
   const { error } = await supabase.from('comments').insert({
     post_id: postId,
     user_id: user.id,
@@ -317,6 +320,8 @@ async function submitComment(event) {
   } else {
     replyTarget = null;
     form.reset();
+    // Thay vì load lại toàn bộ feed làm mất vị trí, ta có thể giữ nguyên hoặc chỉ render nhẹ nhàng nếu cần, 
+    // realtime từ supabase channel sẽ tự động cập nhật lại dữ liệu mà không làm giật trang.
   }
 }
 
@@ -349,7 +354,6 @@ async function deletePost(postId) {
 }
 
 function handleFeedClick(event) {
-  // LẮNG NGHE SỰ KIỆN CLICK VÀO TÊN HOẶC AVATAR NGƯỜI DÙNG
   const userBtn = event.target.closest('.clickable-user');
   if (userBtn && userBtn.dataset.userId) {
     openUserProfile(userBtn.dataset.userId);
@@ -360,15 +364,17 @@ function handleFeedClick(event) {
   if (!postEl) return;
   const postId = postEl.dataset.postId;
 
-  const action = event.target.closest('[data-action]')?.dataset.action;
-  
-  if (action === 'like') return togglePostLike(postId);
-  if (action === 'likes') return showPostLikes(postId);
-  
-  if (action === 'focus-comment') {
-    const input = postEl.querySelector('.comment-form input');
-    if (input) input.focus();
-    return;
+  const actionBtn = event.target.closest('[data-action]');
+  if (actionBtn) {
+    event.preventDefault(); // Chặn nhảy trang
+    const action = actionBtn.dataset.action;
+    if (action === 'like') return togglePostLike(postId);
+    if (action === 'likes') return showPostLikes(postId);
+    if (action === 'focus-comment') {
+      const input = postEl.querySelector('.comment-form input');
+      if (input) input.focus();
+      return;
+    }
   }
 
   const commentEl = event.target.closest('[data-comment-id]');

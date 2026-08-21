@@ -248,6 +248,40 @@ async function submitPost(event) {
   }
 }
 
+async function submitComment(event) {
+  event.preventDefault();
+  const user = getCurrentUser();
+  const form = event.target.closest('form') || event.currentTarget;
+  if (!form) return;
+
+  const postId = form.dataset.postId;
+  const inputEl = form.querySelector('input[name="content"]') || form.querySelector('input');
+  const rawContent = inputEl ? inputEl.value.trim() : '';
+
+  if (!user) {
+    toast('Vui lòng đăng nhập để bình luận.', 'error');
+    return;
+  }
+
+  if (!rawContent) return;
+  const content = filterProfanity(rawContent);
+
+  const { error } = await supabase.from('comments').insert({
+    post_id: postId,
+    user_id: user.id,
+    parent_id: replyTarget?.postId === postId ? replyTarget.commentId : null,
+    content
+  });
+
+  if (error) {
+    toast(error.message, 'error');
+  } else {
+    replyTarget = null;
+    form.reset();
+    await loadPosts(true); // Tải lại bảng tin ngay sau khi bình luận thành công
+  }
+}
+
 async function togglePostLike(postId) {
   const user = getCurrentUser();
   const post = findPost(postId);
@@ -261,6 +295,7 @@ async function togglePostLike(postId) {
       post_id: postId, user_id: user.id, reaction_type: 'like'
     });
   }
+  await loadPosts(true); // Tải lại bảng tin ngay sau khi bấm like để cập nhật số lượng tim
 }
 
 async function showPostLikes(postId) {
@@ -287,43 +322,7 @@ async function showPostLikes(postId) {
     </div>`).join('');
 }
 
-async function submitComment(event) {
-  event.preventDefault(); // Chặn hành vi submit form mặc định gây load lại trang
-  const user = getCurrentUser();
-  const form = event.target.closest('form') || event.currentTarget;
-  if (!form) return;
-
-  const postId = form.dataset.postId;
-  const inputEl = form.querySelector('input[name="content"]') || form.querySelector('input');
-  const rawContent = inputEl ? inputEl.value.trim() : '';
-
-  if (!user) {
-    toast('Vui lòng đăng nhập để bình luận.', 'error');
-    return;
-  }
-
-  if (!rawContent) return;
-  const content = filterProfanity(rawContent);
-
-  // Lưu lại vị trí cuộn hiện tại của trang để tránh bị giật hoặc nhảy lên đầu
-  const scrollPosition = window.scrollY;
-
-  const { error } = await supabase.from('comments').insert({
-    post_id: postId,
-    user_id: user.id,
-    parent_id: replyTarget?.postId === postId ? replyTarget.commentId : null,
-    content
-  });
-
-  if (error) {
-    toast(error.message, 'error');
-  } else {
-    replyTarget = null;
-    form.reset();
-    // Thay vì load lại toàn bộ feed làm mất vị trí, ta có thể giữ nguyên hoặc chỉ render nhẹ nhàng nếu cần, 
-    // realtime từ supabase channel sẽ tự động cập nhật lại dữ liệu mà không làm giật trang.
-  }
-}
+ 
 
 async function deleteComment(commentId) {
   if (!confirm('Xóa bình luận này và toàn bộ trả lời bên dưới?')) return;

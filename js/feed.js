@@ -130,7 +130,6 @@ function renderNewPostNotification() {
   }
 }
 
-// Bổ sung CSS cho banner thông báo
 const bannerStyle = document.createElement('style');
 bannerStyle.innerHTML = `
   .new-posts-banner {
@@ -638,7 +637,6 @@ export function initFeed() {
         .single();
 
       if (postData && postData.user_id === me.id && payload.new.user_id !== me.id) {
-        // Tự động tạo bản ghi thông báo dưới Database nếu không phải tự mình like bài mình
         await supabase.from('notifications').insert({
           user_id: postData.user_id,
           actor_id: payload.new.user_id,
@@ -659,7 +657,7 @@ export function initFeed() {
         }
       }
     })
-    ..on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'comments' }, async payload => {
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'comments' }, async payload => {
       const me = getCurrentUser();
       if (!me || !payload.new) return;
 
@@ -670,7 +668,6 @@ export function initFeed() {
         .single();
 
       if (postData && postData.user_id === me.id && payload.new.user_id !== me.id) {
-        // Tự động tạo bản ghi thông báo bình luận dưới Database
         await supabase.from('notifications').insert({
           user_id: postData.user_id,
           actor_id: payload.new.user_id,
@@ -681,7 +678,6 @@ export function initFeed() {
         playNotificationSound();
         toast('💬 Có người đã bình luận bài viết của bạn!', 'info');
       }
-      
 
       const targetPost = posts.find(p => p.id === payload.new.post_id);
       if (targetPost) {

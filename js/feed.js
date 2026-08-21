@@ -147,19 +147,35 @@ function privacyLabel(p) {
 }
 
 function renderComments(post) {
-  const comments = [...(post.comments || [])].sort((a,b) => new Date(a.created_at)-new Date(b.created_at));
-  const byParent = new Map();
+  const comments = [...(post.comments || [])].sort((a,b) => new Date(a.created_at) - new Date(b.created_at));
+  
+  // Tách thành bình luận gốc (cấp 1) và bình luận trả lời (cấp 2)
+  const rootComments = comments.filter(c => !c.parent_id);
+  const repliesMap = new Map();
+
   comments.forEach(c => {
-    const key = c.parent_id || 'root';
-    if (!byParent.has(key)) byParent.set(key, []);
-    byParent.get(key).push(c);
+    if (c.parent_id) {
+      // Tìm xem bình luận gốc của cấp 1 là gì để gom tất cả về 1 cấp phản hồi duy nhất
+      let rootParentId = c.parent_id;
+      const parentComment = comments.find(x => x.id === c.parent_id);
+      if (parentComment && parentComment.parent_id) {
+        rootParentId = parentComment.parent_id; // Ép về cấp gốc nếu người bị trả lời nằm ở cấp sâu hơn
+      }
+
+      if (!repliesMap.has(rootParentId)) repliesMap.get(rootParentId);
+      if (!repliesMap.has(rootParentId)) repliesMap.set(rootParentId, []);
+      repliesMap.get(rootParentId).push(c);
+    }
   });
 
-  const renderBranch = (parentId, depth=0) => (byParent.get(parentId) || []).map(c => {
+  return rootComments.map(c => {
     const user = c.profiles || {};
     const liked = (c.comment_likes || []).some(x => x.user_id === getCurrentUser()?.id);
     const canDelete = getCurrentUser()?.id === c.user_id || getCurrentUser()?.id === post.user_id;
-    return `<div class="comment ${depth ? 'reply' : ''}" data-comment-id="${c.id}">
+    const childReplies = repliesMap.get(c.id) || [];
+
+    // Render bình luận cấp 1 (Gốc)
+    const rootHtml = `<div class="comment" data-comment-id="${c.id}">
       <img class="avatar clickable-user" data-user-id="${user.id}" style="width:32px;height:32px" src="${escapeHtml(user.avatar_url || fallbackAvatar(user.full_name))}" alt="">
       <div class="comment-body">
         <div class="comment-bubble">
@@ -168,16 +184,39 @@ function renderComments(post) {
         </div>
         <div class="comment-tools">
           <button data-comment-action="like" class="${liked ? 'liked' : ''}">♥ ${(c.comment_likes || []).length}</button>
-          <button data-comment-action="reply">Trả lời</button>
+          <button data-comment-action="reply" data-author-name="${escapeHtml(user.full_name || 'User')}">Trả lời</button>
           ${canDelete ? '<button data-comment-action="delete">Xóa</button>' : ''}
           <span>${timeAgo(c.created_at)}</span>
         </div>
-        ${renderBranch(c.id, depth + 1)}
+        
+        <!-- Danh sách các phản hồi cấp 2 -->
+        <div class="comment-replies">
+          ${childReplies.map(reply => {
+            const rUser = reply.profiles || {};
+            const rLiked = (reply.comment_likes || []).some(x => x.user_id === getCurrentUser()?.id);
+            const rCanDelete = getCurrentUser()?.id === reply.user_id || getCurrentUser()?.id === post.user_id;
+            return `<div class="comment reply" data-comment-id="${reply.id}">
+              <img class="avatar clickable-user" data-user-id="${rUser.id}" style="width:28px;height:28px" src="${escapeHtml(rUser.avatar_url || fallbackAvatar(rUser.full_name))}" alt="">
+              <div class="comment-body">
+                <div class="comment-bubble">
+                  <strong class="clickable-user" data-user-id="${rUser.id}">${escapeHtml(rUser.full_name || 'User')}</strong>
+                  <p>${escapeHtml(reply.content)}</p>
+                </div>
+                <div class="comment-tools">
+                  <button data-comment-action="like" class="${rLiked ? 'liked' : ''}">♥ ${(reply.comment_likes || []).length}</button>
+                  <button data-comment-action="reply" data-author-name="${escapeHtml(rUser.full_name || 'User')}">Trả lời</button>
+                  ${rCanDelete ? '<button data-comment-action="delete">Xóa</button>' : ''}
+                  <span>${timeAgo(reply.created_at)}</span>
+                </div>
+              </div>
+            </div>`;
+          }).join('')}
+        </div>
       </div>
     </div>`;
-  }).join('');
 
-  return renderBranch('root');
+    return rootHtml;
+  }).join('');
 }
 
 function renderReplyState(postId) {
@@ -375,14 +414,26 @@ function handleFeedClick(event) {
   if (commentEl) {
     const commentId = commentEl.dataset.commentId;
     const cAction = event.target.closest('[data-comment-action]')?.dataset.commentAction;
-    const comment = findPost(postId)?.comments?.find(c => c.id === commentId);
+    const post = findPost(postId);
+    const comment = post?.comments?.find(c => c.id === commentId);
     
     if (cAction === 'like') return toggleCommentLike(commentId);
     if (cAction === 'reply') {
-      replyTarget = { postId, commentId, name: comment?.profiles?.full_name || 'User' };
+      const authorName = comment?.profiles?.full_name || 'User';
+      
+      // Đảm bảo chỉ có 2 cấp: Nếu comment được chọn là cấp 2 (có parent_id), 
+      // thì parent_id của bình luận mới sẽ trỏ thẳng về cấp gốc (cấp 1) của nhánh đó. 
+      // Ngược lại, nếu nó là cấp 1, trỏ trực tiếp về chính nó.
+      const targetParentId = comment?.parent_id ? comment.parent_id : commentId;
+
+      replyTarget = { postId, commentId: targetParentId, name: authorName };
       renderFeedList();
+      
       const input = postEl.querySelector('.comment-form input');
-      if (input) input.focus();
+      if (input) {
+        input.value = `@${authorName} `; // Tự động điền thẻ tag vào ô input
+        input.focus();
+      }
       return;
     }
     if (cAction === 'delete') return deleteComment(commentId);

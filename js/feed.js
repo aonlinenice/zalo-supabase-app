@@ -446,25 +446,77 @@ export function initFeed() {
   window.addEventListener('profile-updated', () => loadPosts(true));
 
   // LẮNG NGHE REALTIME BẢNG TIN & THÔNG BÁO
+  // LẮNG NGHE REALTIME BẢNG TIN & THÔNG BÁO CHO CHỦ BÀI VIẾT
   supabase.channel('feed-live')
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'posts' }, () => loadPosts(true))
-    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'post_likes' }, payload => {
-      const me = getCurrentUser();
-      // Chỉ thông báo khi người khác thả tim (không phải chính mình)
-      if (me && payload.new && payload.new.user_id !== me.id) {
-        playNotificationSound();
-        toast('👍 Có người thích bài viết!', 'info');
-      }
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'posts' }, () => {
+      // Với bài viết mới tạo/xóa chung thì vẫn load lại feed nhẹ nhàng hoặc giữ nguyên
       loadPosts(true);
     })
-    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'comments' }, payload => {
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'post_likes' }, async payload => {
       const me = getCurrentUser();
-      // ĐÃ SỬA: payload.new.user_id thay vì payload.new_user_id
-      if (me && payload.new && payload.new.user_id !== me.id) {
+      if (!me || !payload.new) return;
+
+      // Lấy thông tin bài viết để biết ai là chủ bài viết
+      const { data: postData } = await supabase
+        .from('posts')
+        .select('user_id')
+        .eq('id', payload.new.post_id)
+        .single();
+
+      // Chỉ thông báo nếu người like khác mình VÀ mình chính là chủ bài viết
+      if (postData && postData.user_id === me.id && payload.new.user_id !== me.id) {
         playNotificationSound();
-        toast('💬 Có bình luận mới!', 'info');
+        toast('👍 Có người đã thích bài viết của bạn!', 'info');
       }
-      loadPosts(true);
+
+      // Cập nhật ngầm dữ liệu bài viết hiện tại mà không làm mất vị trí cuộn trang quá gắt, 
+      // hoặc bạn có thể gọi loadPosts(false) tùy ý, nhưng để tránh load lại từ đầu trang hoàn toàn, 
+      // ta cập nhật lại mảng posts hiện tại.
+      const targetPost = posts.find(p => p.id === payload.new.post_id);
+      if (targetPost) {
+        if (!targetPost.post_likes) targetPost.post_likes = [];
+        // Thêm like vào local state nếu chưa có
+        if (!targetPost.post_likes.some(l => l.id === payload.new.id)) {
+          targetPost.post_likes.push(payload.new);
+          renderFeedList(); // Render lại giao diện feed tại chỗ không mất vị trí scroll nhiều
+        }
+      }
+    })
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'comments' }, async payload => {
+      const me = getCurrentUser();
+      if (!me || !payload.new) return;
+
+      // Lấy thông tin bài viết để biết ai là chủ bài viết
+      const { data: postData } = await supabase
+        .from('posts')
+        .select('user_id')
+        .eq('id', payload.new.post_id)
+        .single();
+
+      // Chỉ thông báo nếu người bình luận khác mình VÀ mình là chủ bài viết
+      if (postData && postData.user_id === me.id && payload.new.user_id !== me.id) {
+        playNotificationSound();
+        toast('💬 Có người đã bình luận bài viết của bạn!', 'info');
+      }
+
+      // Cập nhật lại comment của bài viết tương ứng ngay trên giao diện mà không load lại toàn bộ trang
+      const targetPost = posts.find(p => p.id === payload.new.post_id);
+      if (targetPost) {
+        // Load lại riêng comments của bài viết này để cập nhật cây comment chính xác
+        const { data: updatedComments } = await supabase
+          .from('comments')
+          .select(`
+            id, post_id, user_id, parent_id, content, created_at, updated_at,
+            profiles (id, full_name, avatar_url),
+            comment_likes (id, user_id)
+          `)
+          .eq('post_id', targetPost.id);
+        
+        if (updatedComments) {
+          targetPost.comments = updatedComments;
+          renderFeedList();
+        }
+      }
     })
     .subscribe();
 }

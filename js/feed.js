@@ -5,7 +5,7 @@ import { avatarFor, uploadImage, escapeHtml, filterProfanity, openUserProfile } 
 const $ = id => document.getElementById(id);
 let posts = [];
 let replyTarget = null;
-
+let newPostsBuffer = [];
 let page = 0;
 const PAGE_SIZE = 10;
 let isLoading = false;
@@ -101,7 +101,58 @@ function renderFeedList() {
     container.insertAdjacentHTML('beforeend', '<div style="text-align:center;padding:15px;color:#a0aec0;font-size:13px">Bạn đã xem hết bài viết.</div>');
   }
 }
+// Biến theo dõi bài viết mới ngầm
+let newPostsBuffer = [];
 
+function renderNewPostNotification() {
+  let notifEl = $('new-posts-banner');
+  const feedList = $('feed-list');
+  if (!feedList) return;
+
+  if (!notifEl && newPostsBuffer.length > 0) {
+    notifEl = document.createElement('div');
+    notifEl.id = 'new-posts-banner';
+    notifEl.className = 'new-posts-banner';
+    notifEl.innerHTML = `<span> có bài viết mới</span>`;
+    notifEl.onclick = () => {
+      // Khi bấm vào thông báo, đưa các bài mới vào mảng chính và render lại
+      posts = [...newPostsBuffer, ...posts];
+      newPostsBuffer = [];
+      notifEl.remove();
+      renderFeedList();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    };
+    feedList.parentNode.insertBefore(notifEl, feedList);
+  } else if (notifEl) {
+    if (newPostsBuffer.length > 0) {
+      notifEl.style.display = 'block';
+      notifEl.querySelector('span').textContent = ` Có bài viết mới`;
+    } else {
+      notifEl.style.display = 'none';
+    }
+  }
+}
+
+// Bổ sung một chút CSS cho banner thông báo (có thể thêm vào file CSS hoặc chèn nhanh)
+const bannerStyle = document.createElement('style');
+bannerStyle.innerHTML = `
+  .new-posts-banner {
+    background-color: #1877f2;
+    color: white;
+    text-align: center;
+    padding: 10px;
+    margin-bottom: 15px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: bold;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    transition: background 0.2s;
+  }
+  .new-posts-banner:hover {
+    background-color: #166fe5;
+  }
+`;
+document.head.appendChild(bannerStyle);
 function postHtml(post) {
   const user = post.profiles || {};
   const me = getCurrentUser();
@@ -571,40 +622,61 @@ export function initFeed() {
   window.addEventListener('auth-ready', () => loadPosts(true));
   window.addEventListener('profile-updated', () => loadPosts(true));
 
-  // LẮNG NGHE REALTIME BẢNG TIN & THÔNG BÁO
-  // LẮNG NGHE REALTIME BẢNG TIN & THÔNG BÁO CHO CHỦ BÀI VIẾT
+
+  // LẮNG NGHE REALTIME BẢNG TIN & THÔNG BÁO (Không load lại trang khi người khác đăng bài)
   supabase.channel('feed-live')
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'posts' }, () => {
-      // Với bài viết mới tạo/xóa chung thì vẫn load lại feed nhẹ nhàng hoặc giữ nguyên
-      loadPosts(true);
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'posts' }, async payload => {
+      const me = getCurrentUser();
+      if (!payload.new) return;
+
+      // Nếu là chính mình đăng bài thì cho phép load lại / đẩy lên luôn
+      if (me && payload.new.user_id === me.id) {
+        loadPosts(true);
+        return;
+      }
+
+      // Nếu là người khác đăng: Tải thông tin đầy đủ của bài viết đó rồi lưu vào bộ đệm ngầm
+      const { data: fullPost, error } = await supabase
+        .from('posts')
+        .select(`
+          id, user_id, content, image_url, privacy, created_at,
+          profiles (id, full_name, avatar_url),
+          post_likes (id, user_id, reaction_type, created_at),
+          comments (
+            id, post_id, user_id, parent_id, content, created_at, updated_at,
+            profiles (id, full_name, avatar_url),
+            comment_likes (id, user_id)
+          )
+        `)
+        .eq('id', payload.new.id)
+        .single();
+
+      if (!error && fullPost) {
+        newPostsBuffer.unshift(fullPost);
+        renderNewPostNotification(); // Hiện nút gợi ý "Có bài viết mới" giống Facebook
+      }
     })
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'post_likes' }, async payload => {
       const me = getCurrentUser();
       if (!me || !payload.new) return;
 
-      // Lấy thông tin bài viết để biết ai là chủ bài viết
       const { data: postData } = await supabase
         .from('posts')
         .select('user_id')
         .eq('id', payload.new.post_id)
         .single();
 
-      // Chỉ thông báo nếu người like khác mình VÀ mình chính là chủ bài viết
       if (postData && postData.user_id === me.id && payload.new.user_id !== me.id) {
         playNotificationSound();
         toast('👍 Có người đã thích bài viết của bạn!', 'info');
       }
 
-      // Cập nhật ngầm dữ liệu bài viết hiện tại mà không làm mất vị trí cuộn trang quá gắt, 
-      // hoặc bạn có thể gọi loadPosts(false) tùy ý, nhưng để tránh load lại từ đầu trang hoàn toàn, 
-      // ta cập nhật lại mảng posts hiện tại.
       const targetPost = posts.find(p => p.id === payload.new.post_id);
       if (targetPost) {
         if (!targetPost.post_likes) targetPost.post_likes = [];
-        // Thêm like vào local state nếu chưa có
         if (!targetPost.post_likes.some(l => l.id === payload.new.id)) {
           targetPost.post_likes.push(payload.new);
-          renderFeedList(); // Render lại giao diện feed tại chỗ không mất vị trí scroll nhiều
+          renderFeedList();
         }
       }
     })
@@ -612,23 +684,19 @@ export function initFeed() {
       const me = getCurrentUser();
       if (!me || !payload.new) return;
 
-      // Lấy thông tin bài viết để biết ai là chủ bài viết
       const { data: postData } = await supabase
         .from('posts')
         .select('user_id')
         .eq('id', payload.new.post_id)
         .single();
 
-      // Chỉ thông báo nếu người bình luận khác mình VÀ mình là chủ bài viết
       if (postData && postData.user_id === me.id && payload.new.user_id !== me.id) {
         playNotificationSound();
         toast('💬 Có người đã bình luận bài viết của bạn!', 'info');
       }
 
-      // Cập nhật lại comment của bài viết tương ứng ngay trên giao diện mà không load lại toàn bộ trang
       const targetPost = posts.find(p => p.id === payload.new.post_id);
       if (targetPost) {
-        // Load lại riêng comments của bài viết này để cập nhật cây comment chính xác
         const { data: updatedComments } = await supabase
           .from('comments')
           .select(`

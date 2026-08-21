@@ -292,14 +292,38 @@ async function togglePostLike(postId) {
   const post = findPost(postId);
   if (!user || !post) return;
 
-  const existing = (post.post_likes || []).find(x => x.user_id === user.id);
+  if (!post.post_likes) post.post_likes = [];
+
+  const existing = post.post_likes.find(x => x.user_id === user.id);
+  
   if (existing) {
-    await supabase.from('post_likes').delete().eq('id', existing.id);
+    // Bỏ thích: Xóa bản ghi like theo id của bản ghi like
+    const { error } = await supabase.from('post_likes').delete().eq('id', existing.id);
+    if (error) {
+      toast(error.message, 'error');
+      return;
+    }
+    // Cập nhật lại mảng post_likes cục bộ ngay lập tức để UI phản hồi
+    post.post_likes = post.post_likes.filter(x => x.id !== existing.id);
   } else {
-    await supabase.from('post_likes').insert({
-      post_id: postId, user_id: user.id, reaction_type: 'like'
-    });
+    // Thích bài viết: Thêm mới bản ghi like
+    const { data, error } = await supabase.from('post_likes').insert({
+      post_id: postId, 
+      user_id: user.id, 
+      reaction_type: 'like'
+    }).select().single();
+
+    if (error) {
+      toast(error.message, 'error');
+      return;
+    }
+    if (data) {
+      post.post_likes.push(data);
+    }
   }
+
+  // Vẽ lại giao diện feed tại chỗ để cập nhật nút Thích (Sáng/Tối) và số lượt đếm
+  renderFeedList();
 }
 
 async function showPostLikes(postId) {

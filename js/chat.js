@@ -88,19 +88,42 @@ function conversationDisplay(c) {
   return { name: other?.full_name || 'Người dùng', avatar: other?.avatar_url || fallbackAvatar(other?.full_name), subtitle: 'Trò chuyện riêng' };
 }
 
+// Thêm đoạn tính toán đếm tin nhắn chưa đọc và render giao diện trong danh sách chat:
 function renderConversationList() {
+  const me = getCurrentUser();
+  let totalUnread = 0;
+
   $('chat-list').innerHTML = conversations.length ? conversations.map(c => {
     const d = conversationDisplay(c);
     const last = c.messages.at(-1);
+    
+    // Giả sử kiểm tra tin nhắn chưa đọc từ người khác gửi cuối cùng (hoặc dùng bảng trạng thái đọc tin nhắn nếu có)
+    // Ở đây ta nhận diện tin nhắn mới chưa đọc nếu tin nhắn cuối cùng không phải do mình gửi và chưa xem
+    const isUnread = last && last.sender_id !== me?.id; 
+    if (isUnread) totalUnread++;
+
     const preview = last ? (last.is_recalled ? 'Tin nhắn đã được thu hồi' : (last.content || '📷 Ảnh')) : 'Chưa có tin nhắn';
-    return `<button class="chat-list-item ${activeConversation?.id === c.id ? 'active' : ''}" data-conversation-id="${c.id}">
+    
+    return `<button class="chat-list-item ${activeConversation?.id === c.id ? 'active' : ''} ${isUnread ? 'unread' : ''}" data-conversation-id="${c.id}">
       <img class="avatar" src="${escapeHtml(d.avatar)}" alt="">
       <div class="chat-preview">
-        <strong>${escapeHtml(d.name)}</strong>
-        <span>${escapeHtml(preview)} · ${last ? timeShort(last.created_at) : ''}</span>
+        <strong class="${isUnread ? 'unread-title' : ''}">${escapeHtml(d.name)}</strong>
+        <span class="${isUnread ? 'unread-preview' : ''}">${escapeHtml(preview)} · ${last ? timeShort(last.created_at) : ''}</span>
       </div>
+      ${isUnread ? `<span class="badge">Mới</span>` : ''}
     </button>`;
   }).join('') : `<div style="padding:10px;color:#718096;font-size:12px">Chưa có cuộc trò chuyện.</div>`;
+
+  // Cập nhật badge tổng số tin nhắn chưa đọc ngoài thanh menu (Sidebar)
+  const chatBadge = $('chat-badge');
+  if (chatBadge) {
+    if (totalUnread > 0) {
+      chatBadge.textContent = totalUnread;
+      chatBadge.classList.remove('hidden');
+    } else {
+      chatBadge.classList.add('hidden');
+    }
+  }
 }
 
 async function openConversation(id) {

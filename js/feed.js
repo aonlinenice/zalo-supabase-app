@@ -101,8 +101,6 @@ function renderFeedList() {
     container.insertAdjacentHTML('beforeend', '<div style="text-align:center;padding:15px;color:#a0aec0;font-size:13px">Bạn đã xem hết bài viết.</div>');
   }
 }
-// Biến theo dõi bài viết mới ngầm
-let newPostsBuffer = [];
 
 function renderNewPostNotification() {
   let notifEl = $('new-posts-banner');
@@ -113,9 +111,8 @@ function renderNewPostNotification() {
     notifEl = document.createElement('div');
     notifEl.id = 'new-posts-banner';
     notifEl.className = 'new-posts-banner';
-    notifEl.innerHTML = `<span> có bài viết mới</span>`;
+    notifEl.innerHTML = `<span>Có bài viết mới</span>`;
     notifEl.onclick = () => {
-      // Khi bấm vào thông báo, đưa các bài mới vào mảng chính và render lại
       posts = [...newPostsBuffer, ...posts];
       newPostsBuffer = [];
       notifEl.remove();
@@ -126,14 +123,14 @@ function renderNewPostNotification() {
   } else if (notifEl) {
     if (newPostsBuffer.length > 0) {
       notifEl.style.display = 'block';
-      notifEl.querySelector('span').textContent = ` Có bài viết mới`;
+      notifEl.querySelector('span').textContent = `Có bài viết mới`;
     } else {
       notifEl.style.display = 'none';
     }
   }
 }
 
-// Bổ sung một chút CSS cho banner thông báo (có thể thêm vào file CSS hoặc chèn nhanh)
+// Bổ sung CSS cho banner thông báo
 const bannerStyle = document.createElement('style');
 bannerStyle.innerHTML = `
   .new-posts-banner {
@@ -153,6 +150,7 @@ bannerStyle.innerHTML = `
   }
 `;
 document.head.appendChild(bannerStyle);
+
 function postHtml(post) {
   const user = post.profiles || {};
   const me = getCurrentUser();
@@ -200,20 +198,17 @@ function privacyLabel(p) {
 function renderComments(post) {
   const comments = [...(post.comments || [])].sort((a,b) => new Date(a.created_at) - new Date(b.created_at));
   
-  // Tách thành bình luận gốc (cấp 1) và bình luận trả lời (cấp 2)
   const rootComments = comments.filter(c => !c.parent_id);
   const repliesMap = new Map();
 
   comments.forEach(c => {
     if (c.parent_id) {
-      // Tìm xem bình luận gốc của cấp 1 là gì để gom tất cả về 1 cấp phản hồi duy nhất
       let rootParentId = c.parent_id;
       const parentComment = comments.find(x => x.id === c.parent_id);
       if (parentComment && parentComment.parent_id) {
-        rootParentId = parentComment.parent_id; // Ép về cấp gốc nếu người bị trả lời nằm ở cấp sâu hơn
+        rootParentId = parentComment.parent_id;
       }
 
-      if (!repliesMap.has(rootParentId)) repliesMap.get(rootParentId);
       if (!repliesMap.has(rootParentId)) repliesMap.set(rootParentId, []);
       repliesMap.get(rootParentId).push(c);
     }
@@ -225,7 +220,6 @@ function renderComments(post) {
     const canDelete = getCurrentUser()?.id === c.user_id || getCurrentUser()?.id === post.user_id;
     const childReplies = repliesMap.get(c.id) || [];
 
-    // Render bình luận cấp 1 (Gốc)
     const rootHtml = `<div class="comment" data-comment-id="${c.id}">
       <img class="avatar clickable-user" data-user-id="${user.id}" style="width:32px;height:32px" src="${escapeHtml(user.avatar_url || fallbackAvatar(user.full_name))}" alt="">
       <div class="comment-body">
@@ -240,7 +234,6 @@ function renderComments(post) {
           <span>${timeAgo(c.created_at)}</span>
         </div>
         
-        <!-- Danh sách các phản hồi cấp 2 -->
         <div class="comment-replies">
           ${childReplies.map(reply => {
             const rUser = reply.profiles || {};
@@ -348,16 +341,13 @@ async function togglePostLike(postId) {
   const existing = post.post_likes.find(x => x.user_id === user.id);
   
   if (existing) {
-    // Bỏ thích: Xóa bản ghi like theo id của bản ghi like
     const { error } = await supabase.from('post_likes').delete().eq('id', existing.id);
     if (error) {
       toast(error.message, 'error');
       return;
     }
-    // Cập nhật lại mảng post_likes cục bộ ngay lập tức để UI phản hồi
     post.post_likes = post.post_likes.filter(x => x.id !== existing.id);
   } else {
-    // Thích bài viết: Thêm mới bản ghi like
     const { data, error } = await supabase.from('post_likes').insert({
       post_id: postId, 
       user_id: user.id, 
@@ -373,7 +363,6 @@ async function togglePostLike(postId) {
     }
   }
 
-  // Vẽ lại giao diện feed tại chỗ để cập nhật nút Thích (Sáng/Tối) và số lượt đếm
   renderFeedList();
 }
 
@@ -443,14 +432,12 @@ async function deleteComment(commentId) {
     return;
   }
 
-  // Cập nhật lại state cục bộ: loại bỏ bình luận vừa xóa khỏi danh sách comments của bài viết chứa nó
   posts.forEach(post => {
     if (post.comments) {
       post.comments = post.comments.filter(c => c.id !== commentId && c.parent_id !== commentId);
     }
   });
 
-  // Render lại giao diện feed ngay tại chỗ
   renderFeedList();
   toast('Đã xóa bình luận.', 'success');
 }
@@ -459,15 +446,12 @@ async function toggleCommentLike(commentId) {
   const user = getCurrentUser();
   if (!user) return;
 
-  // Tìm bài viết và bình luận tương ứng trong state cục bộ
-  let targetPost = null;
   let targetComment = null;
 
   for (const post of posts) {
     if (post.comments) {
       const found = post.comments.find(c => c.id === commentId);
       if (found) {
-        targetPost = post;
         targetComment = found;
         break;
       }
@@ -480,7 +464,6 @@ async function toggleCommentLike(commentId) {
   const existing = targetComment.comment_likes.find(x => x.user_id === user.id);
 
   if (existing) {
-    // Bỏ tim bình luận
     const { error } = await supabase.from('comment_likes').delete().eq('id', existing.id);
     if (error) {
       toast(error.message, 'error');
@@ -488,7 +471,6 @@ async function toggleCommentLike(commentId) {
     }
     targetComment.comment_likes = targetComment.comment_likes.filter(x => x.id !== existing.id);
   } else {
-    // Thả tim bình luận
     const { data, error } = await supabase.from('comment_likes').insert({
       comment_id: commentId, 
       user_id: user.id
@@ -503,7 +485,6 @@ async function toggleCommentLike(commentId) {
     }
   }
 
-  // Render lại giao diện feed ngay lập tức để cập nhật số lượng tim và trạng thái nút
   renderFeedList();
 }
 
@@ -514,7 +495,6 @@ async function deletePost(postId) {
 }
 
 function handleFeedClick(event) {
-  // LẮNG NGHE SỰ KIỆN CLICK VÀO TÊN HOẶC AVATAR NGƯỜI DÙNG
   const userBtn = event.target.closest('.clickable-user');
   if (userBtn && userBtn.dataset.userId) {
     openUserProfile(userBtn.dataset.userId);
@@ -546,10 +526,6 @@ function handleFeedClick(event) {
     if (cAction === 'like') return toggleCommentLike(commentId);
     if (cAction === 'reply') {
       const authorName = comment?.profiles?.full_name || 'User';
-      
-      // Đảm bảo chỉ có 2 cấp: Nếu comment được chọn là cấp 2 (có parent_id), 
-      // thì parent_id của bình luận mới sẽ trỏ thẳng về cấp gốc (cấp 1) của nhánh đó. 
-      // Ngược lại, nếu nó là cấp 1, trỏ trực tiếp về chính nó.
       const targetParentId = comment?.parent_id ? comment.parent_id : commentId;
 
       replyTarget = { postId, commentId: targetParentId, name: authorName };
@@ -557,7 +533,7 @@ function handleFeedClick(event) {
       
       const input = postEl.querySelector('.comment-form input');
       if (input) {
-        input.value = `@${authorName} `; // Tự động điền thẻ tag vào ô input
+        input.value = `@${authorName} `;
         input.focus();
       }
       return;
@@ -594,8 +570,6 @@ function setupInfiniteScroll() {
   });
 }
 
-// js/feed.js (Đoạn cập nhật ở cuối file)
-
 export function initFeed() {
   if ($('post-form')) $('post-form').addEventListener('submit', submitPost);
   if ($('post-image')) $('post-image').addEventListener('change', previewPostImage);
@@ -608,34 +582,31 @@ export function initFeed() {
     });
   }
 
-  // Sự kiện click toàn cục cho danh sách Like
-  $('likes-modal').addEventListener('click', e => {
-    const userBtn = e.target.closest('.clickable-user');
-    if (userBtn && userBtn.dataset.userId) {
-      $('likes-modal').classList.add('hidden');
-      openUserProfile(userBtn.dataset.userId);
-    }
-  });
+  if ($('likes-modal')) {
+    $('likes-modal').addEventListener('click', e => {
+      const userBtn = e.target.closest('.clickable-user');
+      if (userBtn && userBtn.dataset.userId) {
+        $('likes-modal').classList.add('hidden');
+        openUserProfile(userBtn.dataset.userId);
+      }
+    });
+  }
 
   setupInfiniteScroll();
 
   window.addEventListener('auth-ready', () => loadPosts(true));
   window.addEventListener('profile-updated', () => loadPosts(true));
 
-
-  // LẮNG NGHE REALTIME BẢNG TIN & THÔNG BÁO (Không load lại trang khi người khác đăng bài)
   supabase.channel('feed-live')
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'posts' }, async payload => {
       const me = getCurrentUser();
       if (!payload.new) return;
 
-      // Nếu là chính mình đăng bài thì cho phép load lại / đẩy lên luôn
       if (me && payload.new.user_id === me.id) {
         loadPosts(true);
         return;
       }
 
-      // Nếu là người khác đăng: Tải thông tin đầy đủ của bài viết đó rồi lưu vào bộ đệm ngầm
       const { data: fullPost, error } = await supabase
         .from('posts')
         .select(`
@@ -653,7 +624,7 @@ export function initFeed() {
 
       if (!error && fullPost) {
         newPostsBuffer.unshift(fullPost);
-        renderNewPostNotification(); // Hiện nút gợi ý "Có bài viết mới" giống Facebook
+        renderNewPostNotification();
       }
     })
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'post_likes' }, async payload => {

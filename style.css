@@ -7,6 +7,12 @@
 .clickable-user {
   cursor: pointer;
 }
+
+.notification-dropdown.hidden { display: none !important; }
+.notif-item { padding: 10px 12px; display: flex; align-items: center; gap: 10px; border-bottom: 1px solid #f0f2f5; cursor: pointer; text-decoration: none; color: inherit; font-size: 13px; }
+.notif-item:hover { background-color: #f2f4f7; }
+.notif-item.unread { background-color: #e7f3ff; }
+.notif-avatar { width: 36px; height: 36px; border-radius: 50%; object-fit: cover; }
 .chat-list-item.unread .unread-title {
   font-weight: 700;
   color: #000;

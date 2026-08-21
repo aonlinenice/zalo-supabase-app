@@ -1,10 +1,16 @@
 import { supabase } from './supabase-client.js';
 import { getCurrentUser } from './auth.js';
-import { escapeHtml, openUserProfile } from './profile.js';
+import { escapeHtml } from './profile.js';
 
 const $ = id => document.getElementById(id);
 
 let notifications = [];
+
+const notifySound = new Audio('https://etquvhtzwqzjskmkxlog.supabase.co/storage/v1/object/public/assets/audio/notification.mp3');
+function playNotificationSound() {
+  notifySound.currentTime = 0;
+  notifySound.play().catch(err => console.log('Chờ tương tác:', err));
+}
 
 export async function initNotifications() {
   const user = getCurrentUser();
@@ -26,7 +32,6 @@ export async function initNotifications() {
       }
     });
 
-    // Click ra ngoài thì ẩn dropdown
     document.addEventListener('click', (e) => {
       if (!notifDropdown.contains(e.target) && !notifBtn.contains(e.target)) {
         notifDropdown.style.display = 'none';
@@ -41,7 +46,6 @@ export async function initNotifications() {
     });
   }
 
-  // Lắng nghe sự kiện click vào item thông báo trong danh sách
   const notifList = $('notification-list');
   if (notifList) {
     notifList.addEventListener('click', (e) => {
@@ -50,7 +54,6 @@ export async function initNotifications() {
         const postId = item.dataset.postId;
         notifDropdown.style.display = 'none';
         if (postId) {
-          // Cuộn đến bài viết hoặc mở chi tiết bài viết nếu cần
           const postEl = document.querySelector(`[data-post-id="${postId}"]`);
           if (postEl) {
             postEl.scrollIntoView({ behavior: 'smooth' });
@@ -93,7 +96,6 @@ function renderNotifications() {
 
   const unreadCount = notifications.filter(n => !n.is_read).length;
 
-  // Hiển thị hoặc ẩn số lượng trên chuông
   if (unreadCount > 0) {
     badgeEl.textContent = unreadCount > 99 ? '99+' : unreadCount;
     badgeEl.style.display = 'inline-block';
@@ -108,7 +110,12 @@ function renderNotifications() {
 
   listEl.innerHTML = notifications.map(n => {
     const actor = n.actor || {};
-    const actionText = n.type === 'like' ? 'đã thích bài viết của bạn.' : 'đã bình luận bài viết của bạn.';
+    let actionText = 'đã tương tác với bài viết của bạn.';
+    if (n.type === 'like') actionText = 'đã thích bài viết của bạn.';
+    else if (n.type === 'comment') actionText = 'đã bình luận bài viết của bạn.';
+    else if (n.type === 'reply_comment') actionText = 'đã trả lời bình luận của bạn.';
+    else if (n.type === 'like_comment') actionText = 'đã thích bình luận của bạn.';
+
     const timeStr = new Date(n.created_at).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
 
     return `
@@ -149,7 +156,6 @@ function setupNotificationRealtime(userId) {
       table: 'notifications',
       filter: `user_id=eq.${userId}`
     }, async payload => {
-      // Lấy thêm thông tin profile của actor vừa tác động
       const { data: fullNotif } = await supabase
         .from('notifications')
         .select(`
@@ -162,6 +168,7 @@ function setupNotificationRealtime(userId) {
       if (fullNotif) {
         notifications.unshift(fullNotif);
         renderNotifications();
+        playNotificationSound();
       }
     })
     .subscribe();

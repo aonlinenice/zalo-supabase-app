@@ -42,7 +42,7 @@ async function loadConversations() {
   const { data, error } = await supabase
     .from('conversation_members')
     .select(`
-      conversation_id, role, status, joined_at,
+      conversation_id, role, status, joined_at, last_read_at,
       conversations (
         id, type, name, avatar_url, created_by, created_at,
         conversation_members (
@@ -66,10 +66,10 @@ async function loadConversations() {
     c.conversation_members = (c.conversation_members || []).filter(m => m.status === 'active');
     c.messages = (c.messages || []).sort((a,b) => new Date(a.created_at) - new Date(b.created_at));
     
-    // Tính số tin nhắn chưa đọc dựa trên mốc thời gian đã đọc lưu trong localReadMap (hoặc thời điểm tham gia)
-    const lastReadTime = localReadMap[c.id] || x.joined_at;
+    // Tính số tin nhắn chưa đọc dựa trên last_read_at (hoặc joined_at nếu chưa xem lần nào)
+    const lastRead = x.last_read_at || x.joined_at;
     const unreadMessages = c.messages.filter(m => 
-      m.sender_id !== user.id && (!lastReadTime || new Date(m.created_at) > new Date(lastReadTime))
+      m.sender_id !== user.id && (!lastRead || new Date(m.created_at) > new Date(lastRead))
     );
     c.unreadCount = unreadMessages.length;
 
@@ -88,6 +88,33 @@ async function loadConversations() {
       renderChatHeader();
     }
   }
+}
+
+async function openConversation(id) {
+  const c = conversations.find(x => x.id === id);
+  if (!c) return;
+  activeConversation = c;
+  replyMessage = null;
+  $('chat-empty').classList.add('hidden');
+  $('chat-panel').classList.remove('hidden');
+
+  const user = getCurrentUser();
+  if (user) {
+    // Cập nhật thời điểm đã xem vào Supabase (cột last_read_at bạn vừa tạo)
+    await supabase
+      .from('conversation_members')
+      .update({ last_read_at: new Date().toISOString() })
+      .eq('conversation_id', id)
+      .eq('user_id', user.id);
+    
+    c.unreadCount = 0;
+  }
+
+  renderConversationList();
+  await loadMembers();
+  await loadMessages();
+  renderChatHeader();
+  subscribeConversation();
 }
 
 function renderConversationList() {
@@ -127,25 +154,7 @@ function conversationDisplay(c) {
   const other = c.conversation_members.find(m => m.user_id !== me?.id)?.profiles;
   return { name: other?.full_name || 'Người dùng', avatar: other?.avatar_url || fallbackAvatar(other?.full_name), subtitle: 'Trò chuyện riêng' };
 }
-async function openConversation(id) {
-  const c = conversations.find(x => x.id === id);
-  if (!c) return;
-  activeConversation = c;
-  replyMessage = null;
-  $('chat-empty').classList.add('hidden');
-  $('chat-panel').classList.remove('hidden');
 
-  // Đánh dấu cuộc trò chuyện này đã đọc bằng thời điểm hiện tại
-  localReadMap[id] = new Date().toISOString();
-  localStorage.setItem('connect_last_reads', JSON.stringify(localReadMap));
-  c.unreadCount = 0;
-
-  renderConversationList();
-  await loadMembers();
-  await loadMessages();
-  renderChatHeader();
-  subscribeConversation();
-}
 
 async function loadMembers() {
   if (!activeConversation) return;

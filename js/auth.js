@@ -1,6 +1,6 @@
 // js/auth.js
 import { supabase, isConfigured } from './supabase-client.js';
-
+import { initNotifications } from './notifications.js';
 let currentUser = null;
 let currentSession = null;
 
@@ -94,6 +94,9 @@ async function bootstrap() {
     } else {
       window.dispatchEvent(new CustomEvent('auth-signed-out'));
     }
+    window.addEventListener('auth-ready', () => {
+  initNotifications();
+});
   });
 }
 

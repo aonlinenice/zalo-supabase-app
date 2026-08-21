@@ -248,6 +248,45 @@ async function submitPost(event) {
   }
 }
 
+async function togglePostLike(postId) {
+  const user = getCurrentUser();
+  const post = findPost(postId);
+  if (!user || !post) return;
+
+  const existing = (post.post_likes || []).find(x => x.user_id === user.id);
+  if (existing) {
+    await supabase.from('post_likes').delete().eq('id', existing.id);
+  } else {
+    await supabase.from('post_likes').insert({
+      post_id: postId, user_id: user.id, reaction_type: 'like'
+    });
+  }
+}
+
+async function showPostLikes(postId) {
+  const post = findPost(postId);
+  if (!post) return;
+  const ids = [...new Set((post.post_likes || []).map(x => x.user_id))];
+  $('likes-list').innerHTML = '<div style="color:#718096">Đang tải...</div>';
+  $('likes-modal').classList.remove('hidden');
+
+  if (!ids.length) {
+    $('likes-list').innerHTML = '<div style="color:#718096;padding:10px">Chưa có lượt thích.</div>';
+    return;
+  }
+
+  const { data, error } = await supabase.from('profiles').select('id,full_name,avatar_url').in('id', ids);
+  if (error) {
+    toast(error.message, 'error');
+    return;
+  }
+  $('likes-list').innerHTML = (data || []).map(p => `
+    <div class="person">
+      <img class="avatar clickable-user" data-user-id="${p.id}" src="${escapeHtml(p.avatar_url || fallbackAvatar(p.full_name))}" alt="">
+      <div class="person-info"><strong class="clickable-user" data-user-id="${p.id}">${escapeHtml(p.full_name)}</strong></div>
+    </div>`).join('');
+}
+
 async function submitComment(event) {
   event.preventDefault();
   const user = getCurrentUser();
@@ -278,51 +317,8 @@ async function submitComment(event) {
   } else {
     replyTarget = null;
     form.reset();
-    await loadPosts(true); // Tải lại bảng tin ngay sau khi bình luận thành công
   }
 }
-
-async function togglePostLike(postId) {
-  const user = getCurrentUser();
-  const post = findPost(postId);
-  if (!user || !post) return;
-
-  const existing = (post.post_likes || []).find(x => x.user_id === user.id);
-  if (existing) {
-    await supabase.from('post_likes').delete().eq('id', existing.id);
-  } else {
-    await supabase.from('post_likes').insert({
-      post_id: postId, user_id: user.id, reaction_type: 'like'
-    });
-  }
-  await loadPosts(true); // Tải lại bảng tin ngay sau khi bấm like để cập nhật số lượng tim
-}
-
-async function showPostLikes(postId) {
-  const post = findPost(postId);
-  if (!post) return;
-  const ids = [...new Set((post.post_likes || []).map(x => x.user_id))];
-  $('likes-list').innerHTML = '<div style="color:#718096">Đang tải...</div>';
-  $('likes-modal').classList.remove('hidden');
-
-  if (!ids.length) {
-    $('likes-list').innerHTML = '<div style="color:#718096;padding:10px">Chưa có lượt thích.</div>';
-    return;
-  }
-
-  const { data, error } = await supabase.from('profiles').select('id,full_name,avatar_url').in('id', ids);
-  if (error) {
-    toast(error.message, 'error');
-    return;
-  }
-  $('likes-list').innerHTML = (data || []).map(p => `
-    <div class="person">
-      <img class="avatar clickable-user" data-user-id="${p.id}" src="${escapeHtml(p.avatar_url || fallbackAvatar(p.full_name))}" alt="">
-      <div class="person-info"><strong class="clickable-user" data-user-id="${p.id}">${escapeHtml(p.full_name)}</strong></div>
-    </div>`).join('');
-}
-
- 
 
 async function deleteComment(commentId) {
   if (!confirm('Xóa bình luận này và toàn bộ trả lời bên dưới?')) return;
@@ -353,6 +349,7 @@ async function deletePost(postId) {
 }
 
 function handleFeedClick(event) {
+  // LẮNG NGHE SỰ KIỆN CLICK VÀO TÊN HOẶC AVATAR NGƯỜI DÙNG
   const userBtn = event.target.closest('.clickable-user');
   if (userBtn && userBtn.dataset.userId) {
     openUserProfile(userBtn.dataset.userId);
@@ -363,17 +360,15 @@ function handleFeedClick(event) {
   if (!postEl) return;
   const postId = postEl.dataset.postId;
 
-  const actionBtn = event.target.closest('[data-action]');
-  if (actionBtn) {
-    event.preventDefault(); // Chặn nhảy trang
-    const action = actionBtn.dataset.action;
-    if (action === 'like') return togglePostLike(postId);
-    if (action === 'likes') return showPostLikes(postId);
-    if (action === 'focus-comment') {
-      const input = postEl.querySelector('.comment-form input');
-      if (input) input.focus();
-      return;
-    }
+  const action = event.target.closest('[data-action]')?.dataset.action;
+  
+  if (action === 'like') return togglePostLike(postId);
+  if (action === 'likes') return showPostLikes(postId);
+  
+  if (action === 'focus-comment') {
+    const input = postEl.querySelector('.comment-form input');
+    if (input) input.focus();
+    return;
   }
 
   const commentEl = event.target.closest('[data-comment-id]');
@@ -451,13 +446,11 @@ export function initFeed() {
   window.addEventListener('profile-updated', () => loadPosts(true));
 
   // LẮNG NGHE REALTIME BẢNG TIN & THÔNG BÁO
-  s// LẮNG NGHE REALTIME BẢNG TIN & THÔNG BÁO
   supabase.channel('feed-live')
     .on('postgres_changes', { event: '*', schema: 'public', table: 'posts' }, () => loadPosts(true))
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'post_likes' }, payload => {
       const me = getCurrentUser();
-      // Chỉ thông báo khi có người khác thích bài viết của chính bạn (hoặc bạn liên quan)
-      // Lưu ý: Nếu muốn chính xác hơn, bạn có thể kiểm tra xem bài viết đó có thuộc về `me.id` hay không.
+      // Chỉ thông báo khi người khác thả tim (không phải chính mình)
       if (me && payload.new && payload.new.user_id !== me.id) {
         playNotificationSound();
         toast('👍 Có người thích bài viết!', 'info');
@@ -466,6 +459,7 @@ export function initFeed() {
     })
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'comments' }, payload => {
       const me = getCurrentUser();
+      // ĐÃ SỬA: payload.new.user_id thay vì payload.new_user_id
       if (me && payload.new && payload.new.user_id !== me.id) {
         playNotificationSound();
         toast('💬 Có bình luận mới!', 'info');

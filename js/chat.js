@@ -3,7 +3,7 @@ import { getCurrentUser } from './auth.js';
 import { avatarFor, uploadImage, escapeHtml, filterProfanity, openUserProfile } from './profile.js';
 
 const $ = id => document.getElementById(id);
-let conversations = [];renderConversationList
+let conversations = [];
 let activeConversation = null;
 let activeMembers = [];
 let messages = [];
@@ -12,8 +12,7 @@ let chatChannel = null;
 let selectedGroupUsers = [];
 // Khởi tạo âm thanh thông báo tin nhắn
 const notifySound = new Audio('https://etquvhtzwqzjskmkxlog.supabase.co/storage/v1/object/public/assets/audio/notification.mp3');
-// Lưu mốc thời gian đã đọc tin nhắn cho từng cuộc trò chuyện (key: conversationId, value: timestamp)
-const localReadMap = JSON.parse(localStorage.getItem('connect_last_reads') || '{}');
+
 function playNotificationSound() {
   notifySound.currentTime = 0;
   notifySound.play().catch(err => console.log('Chờ tương tác của người dùng để phát âm thanh:', err));
@@ -42,7 +41,7 @@ async function loadConversations() {
   const { data, error } = await supabase
     .from('conversation_members')
     .select(`
-      conversation_id, role, status, joined_at, last_read_at,
+      conversation_id, role, status, joined_at,
       conversations (
         id, type, name, avatar_url, created_by, created_at,
         conversation_members (
@@ -60,21 +59,11 @@ async function loadConversations() {
     return;
   }
 
-  conversations = (data || []).map(x => {
-    const c = x.conversations;
-    if (!c) return null;
+  conversations = (data || []).map(x => x.conversations).filter(Boolean).map(c => {
     c.conversation_members = (c.conversation_members || []).filter(m => m.status === 'active');
     c.messages = (c.messages || []).sort((a,b) => new Date(a.created_at) - new Date(b.created_at));
-    
-    // Tính số tin nhắn chưa đọc dựa trên last_read_at (hoặc joined_at nếu chưa xem lần nào)
-    const lastRead = x.last_read_at || x.joined_at;
-    const unreadMessages = c.messages.filter(m => 
-      m.sender_id !== user.id && (!lastRead || new Date(m.created_at) > new Date(lastRead))
-    );
-    c.unreadCount = unreadMessages.length;
-
     return c;
-  }).filter(Boolean).sort((a,b) => {
+  }).sort((a,b) => {
     const at = a.messages.at(-1)?.created_at || a.created_at;
     const bt = b.messages.at(-1)?.created_at || b.created_at;
     return new Date(bt) - new Date(at);
@@ -90,62 +79,6 @@ async function loadConversations() {
   }
 }
 
-async function openConversation(id) {
-  const c = conversations.find(x => x.id === id);
-  if (!c) return;
-  activeConversation = c;
-  replyMessage = null;
-  $('chat-empty').classList.add('hidden');
-  $('chat-panel').classList.remove('hidden');
-
-  const user = getCurrentUser();
-  if (user) {
-    // Cập nhật thời điểm đã xem vào Supabase (cột last_read_at bạn vừa tạo)
-    await supabase
-      .from('conversation_members')
-      .update({ last_read_at: new Date().toISOString() })
-      .eq('conversation_id', id)
-      .eq('user_id', user.id);
-    
-    c.unreadCount = 0;
-  }
-
-  renderConversationList();
-  await loadMembers();
-  await loadMessages();
-  renderChatHeader();
-  subscribeConversation();
-}
-
-function renderConversationList() {
-  const me = getCurrentUser();
-  
-  $('chat-list').innerHTML = conversations.length ? conversations.map(c => {
-    const d = conversationDisplay(c);
-    const last = c.messages.at(-1);
-    const preview = last ? (last.is_recalled ? 'Tin nhắn đã được thu hồi' : (last.content || '📷 Ảnh')) : 'Chưa có tin nhắn';
-    
-    // Kiểm tra nếu có tin nhắn chưa đọc
-    const unread = c.unreadCount || 0;
-    const hasUnread = unread > 0;
-    
-    // Định dạng hiển thị số lượng: (1), (2)... (+9 nếu từ 10 tin trở lên)
-    let badgeText = '';
-    if (hasUnread) {
-      const countLabel = unread >= 10 ? '+9' : unread;
-      badgeText = `(${countLabel})`;
-    }
-
-    return `<button class="chat-list-item ${activeConversation?.id === c.id ? 'active' : ''} ${hasUnread ? 'unread' : ''}" data-conversation-id="${c.id}">
-      <img class="avatar" src="${escapeHtml(d.avatar)}" alt="">
-      <div class="chat-preview">
-        <strong class="${hasUnread ? 'unread-title' : ''}">${escapeHtml(d.name)}</strong>
-        <span class="${hasUnread ? 'unread-preview' : ''}">${badgeText ? badgeText + ' ' : ''}${escapeHtml(preview)} · ${last ? timeShort(last.created_at) : ''}</span>
-      </div>
-    </button>`;
-  }).join('') : `<div style="padding:10px;color:#718096;font-size:12px">Chưa có cuộc trò chuyện.</div>`;
-}
-
 function conversationDisplay(c) {
   const me = getCurrentUser();
   if (c.type === 'group') {
@@ -155,6 +88,34 @@ function conversationDisplay(c) {
   return { name: other?.full_name || 'Người dùng', avatar: other?.avatar_url || fallbackAvatar(other?.full_name), subtitle: 'Trò chuyện riêng' };
 }
 
+function renderConversationList() {
+  $('chat-list').innerHTML = conversations.length ? conversations.map(c => {
+    const d = conversationDisplay(c);
+    const last = c.messages.at(-1);
+    const preview = last ? (last.is_recalled ? 'Tin nhắn đã được thu hồi' : (last.content || '📷 Ảnh')) : 'Chưa có tin nhắn';
+    return `<button class="chat-list-item ${activeConversation?.id === c.id ? 'active' : ''}" data-conversation-id="${c.id}">
+      <img class="avatar" src="${escapeHtml(d.avatar)}" alt="">
+      <div class="chat-preview">
+        <strong>${escapeHtml(d.name)}</strong>
+        <span>${escapeHtml(preview)} · ${last ? timeShort(last.created_at) : ''}</span>
+      </div>
+    </button>`;
+  }).join('') : `<div style="padding:10px;color:#718096;font-size:12px">Chưa có cuộc trò chuyện.</div>`;
+}
+
+async function openConversation(id) {
+  const c = conversations.find(x => x.id === id);
+  if (!c) return;
+  activeConversation = c;
+  replyMessage = null;
+  $('chat-empty').classList.add('hidden');
+  $('chat-panel').classList.remove('hidden');
+  renderConversationList();
+  await loadMembers();
+  await loadMessages();
+  renderChatHeader();
+  subscribeConversation();
+}
 
 async function loadMembers() {
   if (!activeConversation) return;
@@ -635,20 +596,18 @@ export function initChat() {
   });
 
   // LẮNG NGHE REALTIME TIN NHẮN & PHÁT ÂM THANH
-  // LẮNG NGHE REALTIME TIN NHẮN & PHÁT ÂM THANH
   supabase.channel('chat-list-live')
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, payload => {
       const me = getCurrentUser();
-      // Chỉ phát âm thanh/thông báo nếu tin nhắn mới gửi đến từ người khác (không phải mình gửi)
+      // Kiểm tra nếu là tin nhắn từ người khác gửi tới
       if (me && payload.new && payload.new.sender_id !== me.id) {
-        // Kiểm tra xem tin nhắn này có thuộc cuộc trò chuyện mà user hiện tại đang tham gia không 
-        // (Tránh trường hợp nhận thông báo của nhóm/chat khác mà mình không nằm trong đó)
-        playNotificationSound(); 
+        playNotificationSound(); // Phát âm thanh thông báo tin nhắn
         toast('📩 Bạn có tin nhắn mới!', 'info');
       }
       loadConversations();
     })
     .on('postgres_changes', { event: '*', schema: 'public', table: 'conversation_members' }, loadConversations)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'conversations' }, loadConversations)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, loadConversations)
     .subscribe();
 }

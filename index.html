@@ -53,6 +53,25 @@
             <h2>Bảng tin</h2>
             <p>Cập nhật từ bạn bè</p>
           </div>
+          <!-- Đặt đoạn này vào vị trí ngay bên cạnh hoặc trước nút "Hồ sơ" -->
+<div class="nav-item-dropdown-wrapper" style="position: relative; display: inline-block;">
+  <button id="notification-btn" class="nav-btn" title="Thông báo" style="position: relative; background: none; border: none; cursor: pointer; padding: 8px; font-size: 20px;">
+    🔔
+    <span id="notification-badge" class="badge-hidden" style="position: absolute; top: 2px; right: 2px; background: red; color: white; border-radius: 50%; font-size: 10px; padding: 2px 5px; display: none;">0</span>
+  </button>
+  
+  <!-- Popup danh sách thông báo -->
+  <div id="notification-dropdown" class="notification-dropdown hidden" style="position: absolute; right: 0; top: 45px; width: 320px; background: white; border: 1px solid #ccc; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); z-index: 1000; max-height: 400px; display: flex; flex-direction: column;">
+    <div style="padding: 12px; font-weight: bold; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center;">
+      <span>Thông báo</span>
+      <button id="mark-all-read" style="font-size: 12px; background: none; border: none; color: #1877f2; cursor: pointer;">Đã đọc tất cả</button>
+    </div>
+    <div id="notification-list" style="overflow-y: auto; flex: 1; max-height: 330px;">
+      <!-- Danh sách item load ở đây -->
+      <div style="padding: 15px; text-align: center; color: #718096; font-size: 13px;">Chưa có thông báo nào.</div>
+    </div>
+  </div>
+</div>
           <button id="profile-btn" class="btn btn-outline">Hồ sơ</button>
         </header>
 

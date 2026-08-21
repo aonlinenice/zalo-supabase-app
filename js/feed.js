@@ -385,24 +385,75 @@ async function submitComment(event) {
 
 async function deleteComment(commentId) {
   if (!confirm('Xóa bình luận này và toàn bộ trả lời bên dưới?')) return;
+  
   const { error } = await supabase.from('comments').delete().eq('id', commentId);
-  if (error) toast(error.message, 'error');
+  if (error) {
+    toast(error.message, 'error');
+    return;
+  }
+
+  // Cập nhật lại state cục bộ: loại bỏ bình luận vừa xóa khỏi danh sách comments của bài viết chứa nó
+  posts.forEach(post => {
+    if (post.comments) {
+      post.comments = post.comments.filter(c => c.id !== commentId && c.parent_id !== commentId);
+    }
+  });
+
+  // Render lại giao diện feed ngay tại chỗ
+  renderFeedList();
+  toast('Đã xóa bình luận.', 'success');
 }
 
 async function toggleCommentLike(commentId) {
   const user = getCurrentUser();
   if (!user) return;
-  const post = posts.find(p => (p.comments || []).some(c => c.id === commentId));
-  const comment = post?.comments?.find(c => c.id === commentId);
-  if (!comment) return;
 
-  const existing = (comment.comment_likes || []).find(x => x.user_id === user.id);
-  const query = existing
-    ? supabase.from('comment_likes').delete().eq('id', existing.id)
-    : supabase.from('comment_likes').insert({ comment_id: commentId, user_id: user.id });
+  // Tìm bài viết và bình luận tương ứng trong state cục bộ
+  let targetPost = null;
+  let targetComment = null;
 
-  const { error } = await query;
-  if (error) toast(error.message, 'error');
+  for (const post of posts) {
+    if (post.comments) {
+      const found = post.comments.find(c => c.id === commentId);
+      if (found) {
+        targetPost = post;
+        targetComment = found;
+        break;
+      }
+    }
+  }
+
+  if (!targetComment) return;
+  if (!targetComment.comment_likes) targetComment.comment_likes = [];
+
+  const existing = targetComment.comment_likes.find(x => x.user_id === user.id);
+
+  if (existing) {
+    // Bỏ tim bình luận
+    const { error } = await supabase.from('comment_likes').delete().eq('id', existing.id);
+    if (error) {
+      toast(error.message, 'error');
+      return;
+    }
+    targetComment.comment_likes = targetComment.comment_likes.filter(x => x.id !== existing.id);
+  } else {
+    // Thả tim bình luận
+    const { data, error } = await supabase.from('comment_likes').insert({
+      comment_id: commentId, 
+      user_id: user.id
+    }).select().single();
+
+    if (error) {
+      toast(error.message, 'error');
+      return;
+    }
+    if (data) {
+      targetComment.comment_likes.push(data);
+    }
+  }
+
+  // Render lại giao diện feed ngay lập tức để cập nhật số lượng tim và trạng thái nút
+  renderFeedList();
 }
 
 async function deletePost(postId) {

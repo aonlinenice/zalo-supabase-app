@@ -359,6 +359,15 @@ async function togglePostLike(postId) {
     }
     if (data) {
       post.post_likes.push(data);
+      // Gửi thông báo nếu không phải tự like bài mình
+      if (post.user_id !== user.id) {
+        await supabase.from('notifications').insert({
+          user_id: post.user_id,
+          actor_id: user.id,
+          type: 'like',
+          post_id: postId
+        });
+      }
     }
   }
 
@@ -407,18 +416,44 @@ async function submitComment(event) {
   if (!rawContent) return;
   const content = filterProfanity(rawContent);
 
-  const { error } = await supabase.from('comments').insert({
+  const parentId = replyTarget?.postId === postId ? replyTarget.commentId : null;
+
+  const { data: newComment, error } = await supabase.from('comments').insert({
     post_id: postId,
     user_id: user.id,
-    parent_id: replyTarget?.postId === postId ? replyTarget.commentId : null,
+    parent_id: parentId,
     content
-  });
+  }).select().single();
 
   if (error) {
     toast(error.message, 'error');
   } else {
+    // Gửi thông báo
+    const post = findPost(postId);
+    if (parentId) {
+      // Trả lời bình luận -> Tìm chủ nhân của bình luận gốc để thông báo
+      const { data: parentComment } = await supabase.from('comments').select('user_id').eq('id', parentId).single();
+      if (parentComment && parentComment.user_id !== user.id) {
+        await supabase.from('notifications').insert({
+          user_id: parentComment.user_id,
+          actor_id: user.id,
+          type: 'reply_comment',
+          post_id: postId
+        });
+      }
+    } else if (post && post.user_id !== user.id) {
+      // Bình luận bài viết
+      await supabase.from('notifications').insert({
+        user_id: post.user_id,
+        actor_id: user.id,
+        type: 'comment',
+        post_id: postId
+      });
+    }
+
     replyTarget = null;
     form.reset();
+    await loadPosts(false);
   }
 }
 
@@ -446,12 +481,14 @@ async function toggleCommentLike(commentId) {
   if (!user) return;
 
   let targetComment = null;
+  let targetPostId = null;
 
   for (const post of posts) {
     if (post.comments) {
       const found = post.comments.find(c => c.id === commentId);
       if (found) {
         targetComment = found;
+        targetPostId = post.id;
         break;
       }
     }
@@ -481,6 +518,15 @@ async function toggleCommentLike(commentId) {
     }
     if (data) {
       targetComment.comment_likes.push(data);
+      // Gửi thông báo like bình luận nếu không phải tự like bình luận của mình
+      if (targetComment.user_id !== user.id) {
+        await supabase.from('notifications').insert({
+          user_id: targetComment.user_id,
+          actor_id: user.id,
+          type: 'like_comment',
+          post_id: targetPostId
+        });
+      }
     }
   }
 
@@ -627,27 +673,6 @@ export function initFeed() {
       }
     })
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'post_likes' }, async payload => {
-      const me = getCurrentUser();
-      if (!me || !payload.new) return;
-
-      const { data: postData } = await supabase
-        .from('posts')
-        .select('user_id')
-        .eq('id', payload.new.post_id)
-        .single();
-
-      if (postData && postData.user_id === me.id && payload.new.user_id !== me.id) {
-        await supabase.from('notifications').insert({
-          user_id: postData.user_id,
-          actor_id: payload.new.user_id,
-          type: 'like',
-          post_id: payload.new.post_id
-        });
-
-        playNotificationSound();
-        toast('👍 Có người đã thích bài viết của bạn!', 'info');
-      }
-
       const targetPost = posts.find(p => p.id === payload.new.post_id);
       if (targetPost) {
         if (!targetPost.post_likes) targetPost.post_likes = [];
@@ -658,27 +683,6 @@ export function initFeed() {
       }
     })
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'comments' }, async payload => {
-      const me = getCurrentUser();
-      if (!me || !payload.new) return;
-
-      const { data: postData } = await supabase
-        .from('posts')
-        .select('user_id')
-        .eq('id', payload.new.post_id)
-        .single();
-
-      if (postData && postData.user_id === me.id && payload.new.user_id !== me.id) {
-        await supabase.from('notifications').insert({
-          user_id: postData.user_id,
-          actor_id: payload.new.user_id,
-          type: 'comment',
-          post_id: payload.new.post_id
-        });
-
-        playNotificationSound();
-        toast('💬 Có người đã bình luận bài viết của bạn!', 'info');
-      }
-
       const targetPost = posts.find(p => p.id === payload.new.post_id);
       if (targetPost) {
         const { data: updatedComments } = await supabase

@@ -124,6 +124,11 @@ function renderConversationList() {
       chatBadge.classList.add('hidden');
     }
   }
+  // Thêm đoạn này vào cuối hàm renderConversationList() trong chat.js
+const mobileList = $('mobile-chat-list');
+if (mobileList) {
+  mobileList.innerHTML = $('chat-list').innerHTML;
+}
 }
 
 async function openConversation(id) {
@@ -131,6 +136,10 @@ async function openConversation(id) {
   if (!c) return;
   activeConversation = c;
   replyMessage = null;
+  
+  // Bổ sung class active cho mobile
+  document.querySelector('.chat-shell')?.classList.add('active-mobile-chat');
+
   $('chat-empty').classList.add('hidden');
   $('chat-panel').classList.remove('hidden');
   renderConversationList();
@@ -523,6 +532,34 @@ export function initChat() {
     $('new-chat-modal').classList.remove('hidden');
     searchUsers('', 'direct');
   });
+// Sự kiện nút Quay lại trên mobile
+$('mobile-chat-back').addEventListener('click', () => {
+  document.querySelector('.chat-shell')?.classList.remove('active-mobile-chat');
+});
+
+// Nút '+' tạo cuộc trò chuyện trên Mobile
+const mobileNewBtn = $('mobile-new-chat-btn');
+if (mobileNewBtn) {
+  mobileNewBtn.addEventListener('click', () => {
+    selectedGroupUsers = [];
+    renderSelectedGroup();
+    $('new-chat-modal').classList.remove('hidden');
+    searchUsers('', 'direct');
+  });
+}
+
+// Bắt sự kiện chọn cuộc trò chuyện trên danh sách mobile
+const mobileChatList = $('mobile-chat-list');
+if (mobileChatList) {
+  mobileChatList.addEventListener('click', e => {
+    const item = e.target.closest('[data-conversation-id]');
+    if (item) {
+      openConversation(item.dataset.conversationId);
+    }
+  });
+}
+
+
 
   $('chat-list').addEventListener('click', e => {
     const item = e.target.closest('[data-conversation-id]');

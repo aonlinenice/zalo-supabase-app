@@ -109,6 +109,52 @@
       </section>
 
       <section id="chat-view" class="view hidden">
+  <div class="chat-shell">
+    
+    <!-- Danh sách cuộc trò chuyện dành cho Mobile -->
+    <div id="mobile-chat-list-panel" class="mobile-chat-list-panel">
+      <div class="mobile-chat-header">
+        <h3>Cuộc trò chuyện</h3>
+        <button id="mobile-new-chat-btn" class="mini-btn">＋</button>
+      </div>
+      <div id="mobile-chat-list" class="chat-list"></div>
+    </div>
+
+    <!-- Khung nội dung trò chuyện -->
+    <div id="chat-empty" class="chat-empty">
+      <div class="empty-icon">💬</div>
+      <h2>Chọn một cuộc trò chuyện</h2>
+      <p>Bắt đầu chat 1-1 hoặc tạo nhóm mới.</p>
+    </div>
+
+    <div id="chat-panel" class="chat-panel hidden">
+      <header class="chat-header">
+        <button id="mobile-chat-back" class="icon-btn mobile-only">←</button>
+        <img id="chat-avatar" class="avatar" src="" alt="">
+        <div class="chat-header-info">
+          <strong id="chat-title">Chat</strong>
+          <span id="chat-subtitle"></span>
+        </div>
+        <button id="group-info-btn" class="icon-btn hidden" title="Quản lý nhóm">⋮</button>
+      </header>
+
+      <div id="message-list" class="message-list"></div>
+
+      <div id="reply-banner" class="reply-banner hidden">
+        <div><strong>Đang trả lời</strong><span id="reply-text"></span></div>
+        <button id="cancel-reply" class="icon-btn">×</button>
+      </div>
+
+      <form id="message-form" class="message-composer">
+        <label class="attach-btn" title="Đính kèm ảnh">＋
+          <input id="message-media" type="file" accept="image/*" hidden>
+        </label>
+        <input id="message-input" autocomplete="off" placeholder="Nhập tin nhắn..." maxlength="5000">
+        <button class="send-btn" type="submit">➤</button>
+      </form>
+    </div>
+  </div>
+</section>
         <div class="chat-shell">
           <div id="chat-empty" class="chat-empty">
             <div class="empty-icon">💬</div>

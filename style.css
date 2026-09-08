@@ -17,7 +17,51 @@
   font-weight: 700;
   color: #000;
 }
+/* --- BỔ SUNG GIAO DIỆN CHAT CHO MOBILE --- */
+.mobile-chat-list-panel {
+  display: none;
+}
 
+@media(max-width: 760px) {
+  /* Hiển thị danh sách chat dạng full màn hình trên mobile khi ở màn chat */
+  .mobile-chat-list-panel {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    height: 100%;
+    background: var(--surface);
+    padding: 12px;
+  }
+
+  .mobile-chat-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .mobile-chat-header h3 {
+    margin: 0;
+    font-size: 18px;
+  }
+
+  /* Khi đã chọn cuộc trò chuyện trên mobile, ẩn danh sách chat và hiển thị khung chat */
+  .chat-shell.active-mobile-chat .mobile-chat-list-panel,
+  .chat-shell.active-mobile-chat #chat-empty {
+    display: none !important;
+  }
+
+  .chat-shell.active-mobile-chat #chat-panel {
+    display: flex !important;
+  }
+
+  /* Khi chưa chọn cuộc trò chuyện, ẩn khung chat rỗng đi */
+  .chat-shell:not(.active-mobile-chat) #chat-panel {
+    display: none !important;
+  }
+}
 .chat-list-item.unread .unread-preview {
   font-weight: 600;
   color: #111;

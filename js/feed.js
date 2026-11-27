@@ -171,6 +171,7 @@ function postHtml(post) {
     </div>
     ${post.content ? `<div class="post-content">${escapeHtml(post.content)}</div>` : ''}
     ${image}
+    ${fileAttachment}
     <div class="post-stats">
       <button class="stat-link likes-count" data-action="likes">${likes.length} lượt thích</button>
       <span>${comments.length} bình luận</span>

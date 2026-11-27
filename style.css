@@ -70,6 +70,10 @@
   text-decoration: underline;
   opacity: 0.85;
 }
+.post-file-box{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:8px 0 6px;padding:10px 12px;border:1px solid var(--border);border-radius:10px;background:#f6f9fc}
+.post-file-name{font-size:13px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.post-download-btn{padding:6px 12px;font-size:12px;text-decoration:none;white-space:nowrap;flex-shrink:0}
+.post-download-btn:hover{background:#eaf4ff;border-color:#8ec5ff;color:var(--primary)}
 .file-preview{margin-top:10px;padding:9px 12px;border:1px solid var(--border);border-radius:10px;background:#f6f9fc;font-size:13px;display:flex;align-items:center;justify-content:space-between;gap:10px}
 .post-file{display:inline-flex;align-items:center;gap:8px;margin:8px 0 6px;padding:9px 12px;border:1px solid var(--border);border-radius:10px;background:#f6f9fc;color:var(--primary);font-size:13px;font-weight:600;text-decoration:none;word-break:break-all}
 .post-file:hover{background:#eaf4ff}

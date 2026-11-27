@@ -159,11 +159,22 @@ function postHtml(post) {
  const image = post.image_url
     ? `<img class="post-image" src="${escapeHtml(post.image_url)}" alt="Ảnh bài viết" loading="lazy">`
     : '';
+  const isVideoFile = post.file_url
+    && /\.(mp4|webm|ogg|mov|m4v)(\?.*)?$/i.test(post.file_name || post.file_url);
+  
   const fileAttachment = post.file_url
-    ? `<div class="post-file-box">
-        <span class="post-file-name">📎 ${escapeHtml(post.file_name || 'Tệp đính kèm')}</span>
-        <a class="btn btn-outline post-download-btn" href="${escapeHtml(post.file_url)}" target="_blank" rel="noopener noreferrer" download="${escapeHtml(post.file_name || 'file')}">⬇️ Tải file</a>
-      </div>`
+    ? (isVideoFile
+      ? `<div class="post-video-box">
+          <video class="post-video" src="${escapeHtml(post.file_url)}" controls preload="metadata" playsinline></video>
+          <div class="post-file-box">
+            <span class="post-file-name">🎬 ${escapeHtml(post.file_name || 'Video đính kèm')}</span>
+            <a class="btn btn-outline post-download-btn" href="${escapeHtml(post.file_url)}" target="_blank" rel="noopener noreferrer" download="${escapeHtml(post.file_name || 'video.mp4')}">⬇️ Tải file</a>
+          </div>
+        </div>`
+      : `<div class="post-file-box">
+          <span class="post-file-name">📎 ${escapeHtml(post.file_name || 'Tệp đính kèm')}</span>
+          <a class="btn btn-outline post-download-btn" href="${escapeHtml(post.file_url)}" target="_blank" rel="noopener noreferrer" download="${escapeHtml(post.file_name || 'file')}">⬇️ Tải file</a>
+        </div>`)
     : '';
 
   return `<article class="post card" data-post-id="${post.id}">

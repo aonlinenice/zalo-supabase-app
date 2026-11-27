@@ -295,15 +295,21 @@ async function submitPost(event) {
   const rawContent = $('post-content').value.trim();
   const content = filterProfanity(rawContent);
   const url = $('post-image-url').value.trim();
-  const file = $('post-image').files[0];
+  const imageFile = $('post-image').files[0];
+  const attachFile = $('post-file')?.files[0];
 
   if (content.length > 280) {
     toast('Độ dài status không được quá 280 ký tự.', 'error');
     return;
   }
 
-  if (!content && !url && !file) {
-    toast('Bài viết cần nội dung hoặc ảnh.', 'error');
+  if (!content && !url && !imageFile && !attachFile) {
+    toast('Bài viết cần nội dung, ảnh hoặc file đính kèm.', 'error');
+    return;
+  }
+
+  if (attachFile && attachFile.size > 10 * 1024 * 1024) {
+    toast('Dung lượng file tối đa cho phép là 10MB.', 'error');
     return;
   }
 
@@ -315,18 +321,27 @@ async function submitPost(event) {
 
   try {
     let imageUrl = url || null;
-    if (file) imageUrl = await uploadImage(file, APP_CONFIG.mediaBucket, user.id);
+    if (imageFile) imageUrl = await uploadImage(imageFile, APP_CONFIG.mediaBucket, user.id);
+
+    let fileData = null;
+    if (attachFile) fileData = await uploadFile(attachFile, APP_CONFIG.mediaBucket, user.id);
 
     const { error } = await supabase.from('posts').insert({
       user_id: user.id,
       content,
       image_url: imageUrl,
+      file_url: fileData?.url || null,
+      file_name: fileData?.name || null,
       privacy: $('post-privacy').value
     });
     if (error) throw error;
 
     event.target.reset();
     $('post-image-preview').classList.add('hidden');
+    if ($('post-file-preview')) {
+      $('post-file-preview').classList.add('hidden');
+      $('post-file-preview').innerHTML = '';
+    }
     toast('Đã đăng bài.', 'success');
     await loadPosts(true);
   } catch (err) {
@@ -630,6 +645,38 @@ export function initFeed() {
       }
     });
   }
+if ($('post-file')) $('post-file').addEventListener('change', previewPostFile);
+
+  function previewPostFile() {
+  const input = $('post-file');
+  const preview = $('post-file-preview');
+  if (!input || !preview) return;
+
+  const file = input.files[0];
+  if (!file) {
+    preview.classList.add('hidden');
+    preview.innerHTML = '';
+    return;
+  }
+
+  if (file.size > 10 * 1024 * 1024) {
+    toast('Dung lượng file tối đa cho phép là 10MB.', 'error');
+    input.value = '';
+    preview.classList.add('hidden');
+    preview.innerHTML = '';
+    return;
+  }
+
+  const sizeMb = (file.size / (1024 * 1024)).toFixed(2);
+  preview.innerHTML = `<span>📎 <strong>${escapeHtml(file.name)}</strong> (${sizeMb} MB)</span><button type="button" class="icon-btn" id="clear-post-file" title="Bỏ file">×</button>`;
+  preview.classList.remove('hidden');
+
+  $('clear-post-file')?.addEventListener('click', () => {
+    input.value = '';
+    preview.classList.add('hidden');
+    preview.innerHTML = '';
+  });
+}
 
   if ($('likes-modal')) {
     $('likes-modal').addEventListener('click', e => {

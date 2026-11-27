@@ -23,7 +23,7 @@ function fallbackAvatar(name='User') {
 }
 async function uploadFile(file, bucket, folder) {
   if (!file) return null;
-  const MAX_SIZE = 10 * 1024 * 1024;
+  const MAX_SIZE = 30 * 1024 * 1024;
   if (file.size > MAX_SIZE) throw new Error('Dung lượng file tối đa cho phép là 10MB.');
 
   const rawExt = file.name.includes('.') ? file.name.split('.').pop().toLowerCase().replace(/[^a-z0-9]/g, '') : '';

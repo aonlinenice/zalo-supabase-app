@@ -156,8 +156,11 @@ function postHtml(post) {
   const likes = post.post_likes || [];
   const comments = post.comments || [];
   const liked = likes.some(x => x.user_id === me?.id);
-  const image = post.image_url
+ const image = post.image_url
     ? `<img class="post-image" src="${escapeHtml(post.image_url)}" alt="Ảnh bài viết" loading="lazy">`
+    : '';
+  const fileAttachment = post.file_url
+    ? `<a class="post-file" href="${escapeHtml(post.file_url)}" target="_blank" rel="noopener noreferrer" download="${escapeHtml(post.file_name || 'file')}">📎 ${escapeHtml(post.file_name || 'Tệp đính kèm')}</a>`
     : '';
 
   return `<article class="post card" data-post-id="${post.id}">

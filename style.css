@@ -70,6 +70,9 @@
   text-decoration: underline;
   opacity: 0.85;
 }
+.post-video-box{margin:8px 0 6px}
+.post-video{width:100%;max-height:520px;border-radius:13px;background:#000;display:block;margin-bottom:8px}
+
 .post-file-box{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:8px 0 6px;padding:10px 12px;border:1px solid var(--border);border-radius:10px;background:#f6f9fc}
 .post-file-name{font-size:13px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .post-download-btn{padding:6px 12px;font-size:12px;text-decoration:none;white-space:nowrap;flex-shrink:0}

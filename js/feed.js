@@ -1,6 +1,6 @@
 import { supabase, APP_CONFIG } from './supabase-client.js';
 import { getCurrentUser } from './auth.js';
-import { avatarFor, uploadImage, escapeHtml, filterProfanity, openUserProfile } from './profile.js';
+import { avatarFor, uploadImage, uploadFile, escapeHtml, filterProfanity, openUserProfile } from './profile.js';
 
 const $ = id => document.getElementById(id);
 let posts = [];

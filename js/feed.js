@@ -160,7 +160,10 @@ function postHtml(post) {
     ? `<img class="post-image" src="${escapeHtml(post.image_url)}" alt="Ảnh bài viết" loading="lazy">`
     : '';
   const fileAttachment = post.file_url
-    ? `<a class="post-file" href="${escapeHtml(post.file_url)}" target="_blank" rel="noopener noreferrer" download="${escapeHtml(post.file_name || 'file')}">📎 ${escapeHtml(post.file_name || 'Tệp đính kèm')}</a>`
+    ? `<div class="post-file-box">
+        <span class="post-file-name">📎 ${escapeHtml(post.file_name || 'Tệp đính kèm')}</span>
+        <a class="btn btn-outline post-download-btn" href="${escapeHtml(post.file_url)}" target="_blank" rel="noopener noreferrer" download="${escapeHtml(post.file_name || 'file')}">⬇️ Tải file</a>
+      </div>`
     : '';
 
   return `<article class="post card" data-post-id="${post.id}">

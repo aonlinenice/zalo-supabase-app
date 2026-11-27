@@ -21,7 +21,24 @@ function toast(msg, type='') { window.appToast?.(msg, type); }
 function fallbackAvatar(name='User') {
   return `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=e4eef8&color=24527a`;
 }
+async function uploadFile(file, bucket, folder) {
+  if (!file) return null;
+  const MAX_SIZE = 10 * 1024 * 1024;
+  if (file.size > MAX_SIZE) throw new Error('Dung lượng file tối đa cho phép là 10MB.');
 
+  const rawExt = file.name.includes('.') ? file.name.split('.').pop().toLowerCase().replace(/[^a-z0-9]/g, '') : '';
+  const path = `${folder}/${crypto.randomUUID()}${rawExt ? `.${rawExt}` : ''}`;
+
+  const { error } = await supabase.storage.from(bucket).upload(path, file, {
+    cacheControl: '3600',
+    contentType: file.type || 'application/octet-stream',
+    upsert: false
+  });
+  if (error) throw error;
+
+  const { data } = supabase.storage.from(bucket).getPublicUrl(path);
+  return { url: data.publicUrl, name: file.name };
+}
 function avatarFor(profile) {
   return profile?.avatar_url || fallbackAvatar(profile?.full_name || 'User');
 }
@@ -148,7 +165,7 @@ function escapeHtml(value='') {
 }
 function escapeAttr(value='') { return escapeHtml(value); }
 
-export { avatarFor, fallbackAvatar, uploadImage, escapeHtml, filterProfanity, openUserProfile };
+export { avatarFor, fallbackAvatar, uploadImage, uploadFile, escapeHtml, filterProfanity, openUserProfile };
 
 export function initProfile() {
   $('profile-btn').addEventListener('click', openProfileModal);

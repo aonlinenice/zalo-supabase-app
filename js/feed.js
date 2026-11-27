@@ -655,7 +655,7 @@ export function initFeed() {
       const { data: fullPost, error } = await supabase
         .from('posts')
         .select(`
-          id, user_id, content, image_url, privacy, created_at,
+          id, user_id, content, image_url,file_url,file_name, privacy, created_at,
           profiles (id, full_name, avatar_url),
           post_likes (id, user_id, reaction_type, created_at),
           comments (
